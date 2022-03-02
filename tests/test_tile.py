@@ -13,7 +13,8 @@ def test_to_string():
         ]
     )
     assert tile.to_string() == "GFRRRR"
-    assert tile[1] == Terrain.FOREST
+    assert tile[1] is Terrain.FOREST
+    assert tile[7] is Terrain.FOREST
     assert len(tile) == 6
 
 
