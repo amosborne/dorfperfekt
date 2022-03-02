@@ -13,11 +13,18 @@ def test_to_string():
         ]
     )
     assert tile.to_string() == "GFRRRR"
+    assert tile[1] == Terrain.FOREST
+    assert len(tile) == 6
 
 
 def test_from_string():
     tile = Tile.from_string("gfrrrr")
     assert tile.to_string() == "GFRRRR"
+
+
+def test_from_letter():
+    tile = Tile.from_string("w")
+    assert tile.to_string() == "WWWWWW"
 
 
 def test_equality():
