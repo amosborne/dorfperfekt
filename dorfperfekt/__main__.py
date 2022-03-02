@@ -6,6 +6,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PySide6 import QtWidgets
 
+import dorfperfekt.tile
+
 
 def on_click(event):
     if event.inaxes is not None:
