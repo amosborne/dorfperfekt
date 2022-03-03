@@ -51,10 +51,10 @@ class Map(MutableMapping):
             station = Terrain.STATION in terrains
             lake = this_is_lake or that_is_lake
 
-            if water and not (lake or station) and not match:
+            if water and not (lake or station or match):
                 return False
 
-            if train and not station and not match:
+            if train and not (station or match):
                 return False
 
         return True
@@ -80,11 +80,14 @@ class Map(MutableMapping):
             match = this_terrain is that_terrain
             terrains = (this_terrain, that_terrain)
             grass = Terrain.GRASS in terrains
+            water = Terrain.WATER in terrains
+            train = Terrain.TRAIN in terrains
             station = Terrain.STATION in terrains
             lake = this_is_lake or that_is_lake
-            water_match = (grass and (station or lake)) or (station and lake)
+            water_match = (grass and (station or lake)) or (station and water)
+            train_match = station and train
 
-            if not match and not water_match:
+            if not (match or water_match or train_match):
                 return True
 
         return False
