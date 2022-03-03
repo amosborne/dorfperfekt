@@ -41,3 +41,14 @@ def test_train():
     map[0, 0] = (Tile.from_string("s"), 0)
     assert map.is_valid_position(train, pos=(0, 1), ori=0)
     assert map.is_valid_position(train, pos=(0, 1), ori=1)
+
+
+def test_ruined():
+    map = Map()
+    map[-1, 0] = (Tile.from_string("w"), 0)
+    assert not map.is_ruined_position((0, 0))
+    assert not map.is_ruined_position((-1, 0))
+
+    map[1, 0] = (Tile.from_string("r"), 0)
+    assert map.is_ruined_position((0, 0))
+    assert map.is_ruined_position((1, 0))

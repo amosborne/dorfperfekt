@@ -3,7 +3,7 @@ from collections.abc import MutableMapping
 
 from .tile import Terrain, Tile
 
-ORI_OFFSET = {0: (1, 0), 1: (0, 1), 2: (-1, 1), 3: (-1, 0), 4: (0, -1), 5: (1, -1)}
+OFFSETS = set(zip(range(6), [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]))
 
 
 class Map(MutableMapping):
@@ -28,45 +28,39 @@ class Map(MutableMapping):
 
     def neighbors(self, pos):
         return {
-            ori: (pos[0] + opos[0], pos[1] + opos[1])
-            for ori, opos in ORI_OFFSET.items()
+            (ori, npos)
+            for ori, opos in OFFSETS
+            if self[(npos := (pos[0] + opos[0], pos[1] + opos[1]))] is not None
         }
 
     def open_positions(self):
-        closed_positions = self.tiles.keys()
         return {
             pos
             for cpos in closed_positions
-            for pos in self.neighbors(cpos).values()
-            if pos not in closed_positions
+            for _, pos in self.neighbors(cpos)
+            if pos not in (closed_positions := self.tiles.keys())
         }
 
     def is_valid_position(self, tile, pos, ori):
-        for nori, npos in self.neighbors(pos).items():
-            if self[npos] is None:
-                continue
-            else:
-                that_tile, that_ori = self[npos]
-                that_terrain = that_tile[nori + 3 - that_ori]
-
-            this_terrain = tile[nori - ori]
+        for sori, npos in self.neighbors(pos):
+            this_terrain = tile[sori - ori]
             this_is_lake = all([t is Terrain.WATER for t in tile])
-            that_is_lake = all([t is Terrain.WATER for t in that_tile])
-            terrains = (this_terrain, that_terrain)
 
-            if (
-                Terrain.WATER in terrains
-                and Terrain.STATION not in terrains
-                and not (this_is_lake or that_is_lake)
-                and not this_terrain is that_terrain
-            ):
+            that_tile, that_ori = self[npos]
+            that_terrain = that_tile[sori + 3 - that_ori]
+            that_is_lake = all([t is Terrain.WATER for t in that_tile])
+
+            match = this_terrain is that_terrain
+            terrains = (this_terrain, that_terrain)
+            water = Terrain.WATER in terrains
+            train = Terrain.TRAIN in terrains
+            station = Terrain.STATION in terrains
+            lake = this_is_lake or that_is_lake
+
+            if water and not (lake or station) and not match:
                 return False
 
-            if (
-                Terrain.TRAIN in terrains
-                and Terrain.STATION not in terrains
-                and not this_terrain is that_terrain
-            ):
+            if train and not station and not match:
                 return False
 
         return True
@@ -78,3 +72,25 @@ class Map(MutableMapping):
             for ori in range(6)
             if self.is_valid_position(tile, pos, ori)
         }
+
+    def is_ruined_position(self, pos):
+        tile, ori = self[pos]
+        for sori, npos in self.neighbors(pos):
+            this_terrain = tile[sori - ori]
+            this_is_lake = all([t is Terrain.WATER for t in tile])
+
+            that_tile, that_ori = self[npos]
+            that_terrain = that_tile[sori + 3 - that_ori]
+            that_is_lake = all([t is Terrain.WATER for t in that_tile])
+
+            match = this_terrain is that_terrain
+            terrains = (this_terrain, that_terrain)
+            grass = Terrain.GRASS in terrains
+            station = Terrain.STATION in terrains
+            lake = this_is_lake or that_is_lake
+            water_match = (grass and (station or lake)) or (station and lake)
+
+            if not match and not water_match:
+                return True
+
+        return False
