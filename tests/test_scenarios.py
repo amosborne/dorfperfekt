@@ -11,5 +11,5 @@ def test_perfect_station():
     map[2, -2] = (Tile.from_string("gwgggg"), 0)
     map[3, -2] = (Tile.from_string("gggggg"), 0)
 
-    pos, _ = map.suggest_placement(Tile.from_string("s"))
-    assert pos == (2, -1)
+    placements = map.suggest_placements(Tile.from_string("s"))
+    assert (2, -1) in {pos for pos, _ in placements}

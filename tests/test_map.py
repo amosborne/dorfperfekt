@@ -60,27 +60,26 @@ def test_ruined():
 def test_suggest_placement():
     map = Map()
     rate = map.rate_placement(Tile.from_string("r"), (1, 0), 0)
-    assert rate == (2, 2, 1, 1, 0, 0)
+    assert rate == (2, 0, 2)
 
-    rate = map.rate_position(Tile.from_string("r"), (1, 0))
-    assert rate == (2, 2, 1, 1, 0, 0)
+    score, _ = map.rate_position(Tile.from_string("r"), (1, 0))
+    assert score == (2, 0, 2)
 
-    npos, ori = map.suggest_placement(Tile.from_string("r"))
-    assert npos == (-1, 0)
-    assert ori == 0
+    placements = map.suggest_placements(Tile.from_string("r"))
+    assert ((-1, 0), 0) in placements
 
     one_grass = Tile.from_string("ffgfff")
-    npos, ori = map.suggest_placement(one_grass)
-    assert npos == (-1, 0)
-    assert ori == 4
-    map[npos] = (one_grass, ori)
+    placements = map.suggest_placements(one_grass)
+    pos, ori = (-1, 0), 4
+    assert (pos, ori) in placements
+    map[pos] = (one_grass, ori)
 
-    npos, ori = map.suggest_placement(one_grass)
-    assert npos == (0, -1)
-    assert ori == 5
-    map[npos] = (one_grass, ori)
+    placements = map.suggest_placements(one_grass)
+    pos, ori = (0, -1), 5
+    assert (pos, ori) in placements
+    map[pos] = (one_grass, ori)
 
     ranch_forest = Tile.from_string("ffrrrr")
-    npos, ori = map.suggest_placement(ranch_forest)
-    assert npos == (-1, -1)
-    assert ori == 0
+    placements = map.suggest_placements(ranch_forest)
+    pos, ori = (-1, -1), 0
+    assert (pos, ori) in placements

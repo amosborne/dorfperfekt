@@ -41,9 +41,10 @@ def main():
     while True:
         string = input("Next tile string: ")
         tile = Tile.from_string(string)
-        npos, ori = map.suggest_placement(tile)
-        print(string, npos, ori)
-        map[npos] = (tile, ori)
+        placements = map.suggest_placements(tile)
+        pos, ori = placements.pop()
+        print(string, pos, ori)
+        map[pos] = (tile, ori)
 
 
 if __name__ == "__main__":

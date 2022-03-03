@@ -1,5 +1,5 @@
+from collections import defaultdict
 from collections.abc import MutableMapping
-from math import sqrt
 
 from .tile import Terrain, Tile
 
@@ -86,20 +86,18 @@ class Map(MutableMapping):
             lake = this_is_lake or that_is_lake
             water_match = (grass and (station or lake)) or (station and water)
             train_match = station and train
+            perfect = match or water_match or train_match
 
-            if not (match or water_match or train_match):
+            if not perfect:
                 return True
 
         return False
 
     def rate_placement(self, tile, pos, ori):
         # A placement's rating is a tuple -- lower numbers are better.
-        #  1. Number of tiles newly ruined by the placement (includes self).
-        #  2. Number of new open positions for future placements.
-        #  3. Euclidean distance to the origin.
-        #  4. Horizontal position.
-        #  5. Vertical position.
-        #  6. Orientation.
+        #  1. (+) Number of tiles newly ruined by the placement (includes self).
+        #  2. (-) Number of perfect connections to train or water.
+        #  3. (+) Number of new open positions for future placements.
 
         pre_ruined = sum(map(self.is_ruined_position, self))
         pre_open = len(self.open_positions())
@@ -111,21 +109,47 @@ class Map(MutableMapping):
 
         del self[pos]
 
-        return (
-            post_ruined - pre_ruined,
-            post_open - pre_open,
-            sqrt(pos[0] ** 2 + pos[1] ** 2),
-            *pos,
-            ori,
-        )
+        tiles_newly_ruined = post_ruined - pre_ruined
+        new_open_positions = post_open - pre_open
+
+        perfect_wts_conns = 0
+        for sori, npos in self.neighbors(pos):
+            this_terrain = tile[sori - ori]
+            this_is_lake = all([t is Terrain.WATER for t in tile])
+
+            that_tile, that_ori = self[npos]
+            that_terrain = that_tile[sori + 3 - that_ori]
+            that_is_lake = all([t is Terrain.WATER for t in that_tile])
+
+            match = this_terrain is that_terrain
+            terrains = (this_terrain, that_terrain)
+            grass = Terrain.GRASS in terrains
+            water = Terrain.WATER in terrains
+            train = Terrain.TRAIN in terrains
+            station = Terrain.STATION in terrains
+            lake = this_is_lake or that_is_lake
+            water_match = (grass and (station or lake)) or (station and water)
+            train_match = station and train
+            perfect = match or water_match or train_match
+
+            if perfect and (train or water or station):
+                perfect_wts_conns += 1
+
+        return (tiles_newly_ruined, -perfect_wts_conns, new_open_positions)
 
     def rate_position(self, tile, pos):
-        rates = [self.rate_placement(tile, pos, ori) for ori in range(6)]
-        return sorted(rates)[0]
+        rates = defaultdict(set)
+        for ori in range(6):
+            rates[self.rate_placement(tile, pos, ori)].add((pos, ori))
 
-    def suggest_placement(self, tile):
-        rates = [self.rate_position(tile, pos) for pos in self.open_positions()]
-        best = sorted(rates)[0]
-        npos = tuple(best[3:5])
-        ori = best[5]
-        return npos, ori
+        scores = sorted(rates)
+        return scores[0], rates[scores[0]]
+
+    def suggest_placements(self, tile):
+        rates = defaultdict(set)
+        for pos in self.valid_open_positions(tile):
+            score, placements = self.rate_position(tile, pos)
+            rates[score] |= placements
+
+        scores = sorted(rates)
+        return rates[scores[0]]
