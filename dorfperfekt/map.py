@@ -129,14 +129,19 @@ class Map(MutableMapping):
             if rate is not None:
                 rates[rate].add((pos, ori))
 
+        if not rates:
+            return None
+
         scores = sorted(rates)
         return scores[0], rates[scores[0]]
 
     def suggest_placements(self, tile):
         rates = defaultdict(set)
         for pos in self.open_positions():
-            score, placements = self.rate_position(tile, pos)
-            rates[score] |= placements
+            rate = self.rate_position(tile, pos)
+            if rate is not None:
+                score, placements = rate
+                rates[score] |= placements
 
         scores = sorted(rates)
         return rates[scores[0]]
