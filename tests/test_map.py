@@ -12,7 +12,7 @@ def test_new_map():
 def test_water():
     map = Map()
     map[0, 0] = (Tile.from_string("ggggwg"), 1)
-    lake = Tile.from_string("w")
+    lake = Tile.from_string("c")
     assert map.is_valid_placement(lake, pos=(0, 1), ori=0)
     assert map.is_valid_placement(lake, pos=(1, -1), ori=0)
 
@@ -46,7 +46,7 @@ def test_train():
 
 def test_ruined():
     map = Map()
-    map[-1, 0] = (Tile.from_string("w"), 0)
+    map[-1, 0] = (Tile.from_string("c"), 0)
     assert not map.is_ruined_position((0, 0))
     assert not map.is_ruined_position((-1, 0))
 

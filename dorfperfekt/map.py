@@ -5,6 +5,21 @@ from .tile import Terrain, Tile
 
 OFFSETS = set(zip(range(6), [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]))
 
+RESTRICTED_TERRAINS = {Terrain.WATER, Terrain.TRAIN}
+RESTRICTED_EXCEPTIONS = {
+    frozenset({Terrain.WATER, Terrain.STATION}),
+    frozenset({Terrain.WATER, Terrain.COAST}),
+    frozenset({Terrain.TRAIN, Terrain.STATION}),
+}
+PERFECT_ADDITIONS = {
+    frozenset({Terrain.WATER, Terrain.STATION}),
+    frozenset({Terrain.WATER, Terrain.COAST}),
+    frozenset({Terrain.TRAIN, Terrain.STATION}),
+    frozenset({Terrain.COAST, Terrain.GRASS}),
+    frozenset({Terrain.COAST, Terrain.STATION}),
+    frozenset({Terrain.GRASS, Terrain.STATION}),
+}
+
 
 class Map(MutableMapping):
     def __init__(self):
@@ -38,57 +53,31 @@ class Map(MutableMapping):
     def is_valid_placement(self, tile, pos, ori):
         for sori, npos in self.neighbors(pos):
             this_terrain = tile[sori - ori]
-            this_is_lake = all([t is Terrain.WATER for t in tile])
-
             that_tile, that_ori = self[npos]
             that_terrain = that_tile[sori + 3 - that_ori]
-            that_is_lake = all([t is Terrain.WATER for t in that_tile])
+            terrains = {this_terrain, that_terrain}
 
-            match = this_terrain is that_terrain
-            terrains = (this_terrain, that_terrain)
-            water = Terrain.WATER in terrains
-            train = Terrain.TRAIN in terrains
-            station = Terrain.STATION in terrains
-            lake = this_is_lake or that_is_lake
+            matching = this_terrain is that_terrain
+            restricted = not RESTRICTED_TERRAINS.isdisjoint(terrains)
+            excepted = terrains in RESTRICTED_EXCEPTIONS
 
-            if water and not (lake or station or match):
-                return False
-
-            if train and not (station or match):
+            if restricted and not (matching or excepted):
                 return False
 
         return True
-
-    def valid_open_positions(self, tile):
-        return {
-            pos
-            for pos in self.open_positions()
-            for ori in range(6)
-            if self.is_valid_placement(tile, pos, ori)
-        }
 
     def is_ruined_position(self, pos):
         tile, ori = self[pos]
         for sori, npos in self.neighbors(pos):
             this_terrain = tile[sori - ori]
-            this_is_lake = all([t is Terrain.WATER for t in tile])
-
             that_tile, that_ori = self[npos]
             that_terrain = that_tile[sori + 3 - that_ori]
-            that_is_lake = all([t is Terrain.WATER for t in that_tile])
+            terrains = {this_terrain, that_terrain}
 
-            match = this_terrain is that_terrain
-            terrains = (this_terrain, that_terrain)
-            grass = Terrain.GRASS in terrains
-            water = Terrain.WATER in terrains
-            train = Terrain.TRAIN in terrains
-            station = Terrain.STATION in terrains
-            lake = this_is_lake or that_is_lake
-            water_match = (grass and (station or lake)) or (station and water)
-            train_match = station and train
-            perfect = match or water_match or train_match
+            matching = this_terrain is that_terrain
+            accepted = terrains in PERFECT_ADDITIONS
 
-            if not perfect:
+            if not (matching or accepted):
                 return True
 
         return False
@@ -96,8 +85,11 @@ class Map(MutableMapping):
     def rate_placement(self, tile, pos, ori):
         # A placement's rating is a tuple -- lower numbers are better.
         #  1. (+) Number of tiles newly ruined by the placement (includes self).
-        #  2. (-) Number of perfect connections to train or water.
+        #  2. (-) Number of perfect restricted connections (train or water).
         #  3. (+) Number of new open positions for future placements.
+
+        if not self.is_valid_placement(tile, pos, ori):
+            return None
 
         pre_ruined = sum(map(self.is_ruined_position, self))
         pre_open = len(self.open_positions())
@@ -112,42 +104,37 @@ class Map(MutableMapping):
         tiles_newly_ruined = post_ruined - pre_ruined
         new_open_positions = post_open - pre_open
 
-        perfect_wts_conns = 0
+        perfect_restricted_conns = 0
         for sori, npos in self.neighbors(pos):
             this_terrain = tile[sori - ori]
-            this_is_lake = all([t is Terrain.WATER for t in tile])
-
             that_tile, that_ori = self[npos]
             that_terrain = that_tile[sori + 3 - that_ori]
-            that_is_lake = all([t is Terrain.WATER for t in that_tile])
+            terrains = {this_terrain, that_terrain}
 
-            match = this_terrain is that_terrain
-            terrains = (this_terrain, that_terrain)
-            grass = Terrain.GRASS in terrains
-            water = Terrain.WATER in terrains
-            train = Terrain.TRAIN in terrains
-            station = Terrain.STATION in terrains
-            lake = this_is_lake or that_is_lake
-            water_match = (grass and (station or lake)) or (station and water)
-            train_match = station and train
-            perfect = match or water_match or train_match
+            restricted = not RESTRICTED_TERRAINS.isdisjoint(terrains)
+            matching = this_terrain is that_terrain
+            accepted = terrains in PERFECT_ADDITIONS
 
-            if perfect and (train or water or station):
-                perfect_wts_conns += 1
+            if restricted and (matching or accepted):
+                perfect_restricted_conns += len(
+                    RESTRICTED_TERRAINS.intersection(terrains)
+                )
 
-        return (tiles_newly_ruined, -perfect_wts_conns, new_open_positions)
+        return (tiles_newly_ruined, -perfect_restricted_conns, new_open_positions)
 
     def rate_position(self, tile, pos):
         rates = defaultdict(set)
         for ori in range(6):
-            rates[self.rate_placement(tile, pos, ori)].add((pos, ori))
+            rate = self.rate_placement(tile, pos, ori)
+            if rate is not None:
+                rates[rate].add((pos, ori))
 
         scores = sorted(rates)
         return scores[0], rates[scores[0]]
 
     def suggest_placements(self, tile):
         rates = defaultdict(set)
-        for pos in self.valid_open_positions(tile):
+        for pos in self.open_positions():
             score, placements = self.rate_position(tile, pos)
             rates[score] |= placements
 

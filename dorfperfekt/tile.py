@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from enum import Enum
 
-Terrain = Enum("Terrain", "GRASS FOREST RANCH DWELLING WATER STATION TRAIN")
+Terrain = Enum("Terrain", "GRASS FOREST RANCH DWELLING WATER STATION TRAIN COAST")
 
 
 class Tile(Sequence):
