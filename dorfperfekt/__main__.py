@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from dorfperfekt.display import draw_position_map, draw_terrain_map, hex_coordinates
 from dorfperfekt.map import Map
 from dorfperfekt.tile import Tile
 
@@ -38,19 +39,15 @@ class MainWindow(QMainWindow):
         central.setLayout(vbox)
 
         fig = Figure()
-        ax = fig.add_subplot(1, 1, 1)
-        ax.set_aspect("equal")
-        ax.axis("off")
-        canvas = FigureCanvas(fig)
+        self.position_map_ax = fig.add_subplot(1, 1, 1)
+        self.position_map_canvas = FigureCanvas(fig)
+        vbox.addWidget(self.position_map_canvas, stretch=2)
         # canvas.callbacks.connect("button_press_event", on_click)
-        vbox.addWidget(canvas)
 
         fig = Figure()
-        ax = fig.add_subplot(1, 1, 1)
-        ax.set_aspect("equal")
-        ax.axis("off")
-        canvas = FigureCanvas(fig)
-        vbox.addWidget(canvas)
+        self.terrain_map_ax = fig.add_subplot(1, 1, 1)
+        self.terrain_map_canvas = FigureCanvas(fig)
+        vbox.addWidget(self.terrain_map_canvas, stretch=1)
 
         hbox = QHBoxLayout()
         vbox.addLayout(hbox)
@@ -74,6 +71,7 @@ class MainWindow(QMainWindow):
         grid.addWidget(rotate_ccw_button, 1, 1)
 
         place_button = QPushButton("Place")
+        place_button.clicked.connect(self.place)
         grid.addWidget(place_button, 0, 2)
 
         delete_button = QPushButton("Delete")
@@ -81,16 +79,37 @@ class MainWindow(QMainWindow):
 
         self.map = Map()
 
+        draw_position_map(self.position_map_ax, self.map)
+        self.position_map_canvas.draw()
+        self.position_map_canvas.flush_events()
+
+        draw_terrain_map(self.terrain_map_ax, self.map)
+        self.terrain_map_canvas.draw()
+        self.terrain_map_canvas.flush_events()
+
     def solve(self):
         try:
             tile = Tile.from_string(self.tile_string.text())
         except (AssertionError, KeyError):
             return  # bad tile string-- do nothing
 
-        placements = self.map.suggest_placements(tile)
-        pos, ori = placements.pop()
-        print(tile, pos, ori)
+        movelist = self.map.suggest_placements(tile)
+        move = movelist[0].pop()
+        movelist[0].add(move)
+        self.to_place = (tile, *move)
+        print(self.to_place)
+
+        draw_position_map(self.position_map_ax, self.map, movelist)
+        self.position_map_canvas.draw()
+        self.position_map_canvas.flush_events()
+
+    def place(self):
+        tile, pos, ori = self.to_place
         self.map[pos] = (tile, ori)
+
+        draw_position_map(self.position_map_ax, self.map)
+        self.position_map_canvas.draw()
+        self.position_map_canvas.flush_events()
 
 
 def main():

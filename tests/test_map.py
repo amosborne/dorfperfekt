@@ -66,20 +66,20 @@ def test_suggest_placement():
     assert score == (2, 0, 0, 7)
 
     placements = map.suggest_placements(Tile.from_string("r"))
-    assert ((-1, 0), 0) in placements
+    assert ((-1, 0), 0) in placements[0]
 
     one_grass = Tile.from_string("ffgfff")
     placements = map.suggest_placements(one_grass)
     pos, ori = (-1, 0), 4
-    assert (pos, ori) in placements
+    assert (pos, ori) in placements[0]
     map[pos] = (one_grass, ori)
 
     placements = map.suggest_placements(one_grass)
     pos, ori = (0, -1), 5
-    assert (pos, ori) in placements
+    assert (pos, ori) in placements[0]
     map[pos] = (one_grass, ori)
 
     ranch_forest = Tile.from_string("ffrrrr")
     placements = map.suggest_placements(ranch_forest)
     pos, ori = (-1, -1), 0
-    assert (pos, ori) in placements
+    assert (pos, ori) in placements[0]

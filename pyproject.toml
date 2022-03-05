@@ -9,6 +9,7 @@ license = "MIT"
 python = ">=3.9,<3.11"
 matplotlib = "^3.5.1"
 PySide6 = "^6.2.3"
+numpy = "^1.22.2"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.17.0"

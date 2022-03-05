@@ -12,7 +12,7 @@ def test_perfect_station():
     map[3, -2] = (Tile.from_string("gggggg"), 0)
 
     placements = map.suggest_placements(Tile.from_string("s"))
-    assert (2, -1) in {pos for pos, _ in placements}
+    assert (2, -1) in {pos for pos, _ in placements[0]}
 
 
 def test_invalid_position():

@@ -150,5 +150,4 @@ class Map(MutableMapping):
                 score, placements = rate
                 rates[score] |= placements
 
-        scores = sorted(rates)
-        return rates[scores[0]]
+        return [rates[score] for score in sorted(rates)]
