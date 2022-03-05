@@ -41,7 +41,7 @@ class Map(MutableMapping):
         return len(self.tiles)
 
     def neighbors(self, pos, existing=True):
-        npos = lambda opos: (pos[0] + opos[0], pos[1] + opos[1])
+        npos = lambda opos: (pos[0] + opos[0], pos[1] + opos[1])  # noqa: E731
         neighbors = {(ori, npos(opos)) for ori, opos in OFFSETS}
         real_neighbors = {(ori, npos) for ori, npos in neighbors if npos in self}
         open_neighbors = neighbors - real_neighbors
@@ -86,25 +86,27 @@ class Map(MutableMapping):
         # A placement's rating is a tuple -- lower numbers are better.
         #  1. (+) Number of tiles newly ruined by the placement (includes self).
         #  2. (-) Number of perfect restricted connections (train or water).
-        #  3. (+) Number of new open positions for future placements.
+        #  3. (-) Number of perfect non-restricted connections.
+        #  4. (+) Number of occupied edges on open adjacent positions post-placement.
 
         if not self.is_valid_placement(tile, pos, ori):
             return None
 
         pre_ruined = sum(map(self.is_ruined_position, self))
-        pre_open = len(self.open_positions())
 
         self[pos] = (tile, ori)
 
         post_ruined = sum(map(self.is_ruined_position, self))
-        post_open = len(self.open_positions())
+        tiles_newly_ruined = post_ruined - pre_ruined
+
+        occupied_edges = 0
+        for _, npos in self.neighbors(pos, existing=False):
+            occupied_edges += len(self.neighbors(npos))
 
         del self[pos]
 
-        tiles_newly_ruined = post_ruined - pre_ruined
-        new_open_positions = post_open - pre_open
-
         perfect_restricted_conns = 0
+        perfect_nonrestricted_conns = 0
         for sori, npos in self.neighbors(pos):
             this_terrain = tile[sori - ori]
             that_tile, that_ori = self[npos]
@@ -116,11 +118,16 @@ class Map(MutableMapping):
             accepted = terrains in PERFECT_ADDITIONS
 
             if restricted and (matching or accepted):
-                perfect_restricted_conns += len(
-                    RESTRICTED_TERRAINS.intersection(terrains)
-                )
+                perfect_restricted_conns += 1
+            elif not restricted and (matching or accepted):
+                perfect_nonrestricted_conns += 1
 
-        return (tiles_newly_ruined, -perfect_restricted_conns, new_open_positions)
+        return (
+            tiles_newly_ruined,
+            -perfect_restricted_conns,
+            -perfect_nonrestricted_conns,
+            occupied_edges,
+        )
 
     def rate_position(self, tile, pos):
         rates = defaultdict(set)

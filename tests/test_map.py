@@ -60,10 +60,10 @@ def test_ruined():
 def test_suggest_placement():
     map = Map()
     rate = map.rate_placement(Tile.from_string("r"), (1, 0), 0)
-    assert rate == (2, 0, 2)
+    assert rate == (2, 0, 0, 7)
 
     score, _ = map.rate_position(Tile.from_string("r"), (1, 0))
-    assert score == (2, 0, 2)
+    assert score == (2, 0, 0, 7)
 
     placements = map.suggest_placements(Tile.from_string("r"))
     assert ((-1, 0), 0) in placements
