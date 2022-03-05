@@ -1,13 +1,22 @@
-# import sys
+import sys
 
-# import matplotlib
-# from matplotlib.animation import TimedAnimation
-# from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-# from matplotlib.figure import Figure
-# from PySide6 import QtWidgets
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from PySide6.QtCore import QSize
+from PySide6.QtWidgets import (
+    QApplication,
+    QGridLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
-# import dorfperfekt.tile
-
+from dorfperfekt.map import Map
+from dorfperfekt.tile import Tile
 
 # def on_click(event):
 #     if event.inaxes is not None:
@@ -16,35 +25,79 @@
 #         print("Clicked ouside axes bounds but inside plot window")
 
 
-# def main():
-#     app = QtWidgets.QApplication(sys.argv)
-#     wid = QtWidgets.QWidget()
-#     wid.resize(250, 150)
-#     grid = QtWidgets.QGridLayout(wid)
-#     fig = Figure()
-#     ax = fig.add_subplot(1, 1, 1)
-#     ax.plot([0, 1], [0, 1])
-#     ax.set_aspect("equal")
-#     ax.axis("off")
-#     canvas = FigureCanvas(fig)
-#     canvas.callbacks.connect("button_press_event", on_click)
-#     grid.addWidget(canvas, 0, 0)
-#     wid.show()
-#     sys.exit(app.exec())
+class MainWindow(QMainWindow):
+    def __init__(self):
+        QMainWindow.__init__(self)
+        self.setWindowTitle("Dorfperfekt")
+        self.setMinimumSize(QSize(600, 600))
 
-from dorfperfekt.map import Map
-from dorfperfekt.tile import Tile
+        central = QWidget(self)
+        self.setCentralWidget(central)
+
+        vbox = QVBoxLayout()
+        central.setLayout(vbox)
+
+        fig = Figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.set_aspect("equal")
+        ax.axis("off")
+        canvas = FigureCanvas(fig)
+        # canvas.callbacks.connect("button_press_event", on_click)
+        vbox.addWidget(canvas)
+
+        fig = Figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.set_aspect("equal")
+        ax.axis("off")
+        canvas = FigureCanvas(fig)
+        vbox.addWidget(canvas)
+
+        hbox = QHBoxLayout()
+        vbox.addLayout(hbox)
+
+        grid = QGridLayout()
+        hbox.addLayout(grid)
+        hbox.addStretch()
+
+        self.tile_string = QLineEdit()
+        self.tile_string.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        grid.addWidget(self.tile_string, 0, 0)
+
+        solve_button = QPushButton("SOLVE")
+        solve_button.clicked.connect(self.solve)
+        grid.addWidget(solve_button, 1, 0)
+
+        rotate_cw_button = QPushButton("Rotate CW")
+        grid.addWidget(rotate_cw_button, 0, 1)
+
+        rotate_ccw_button = QPushButton("Rotate CCW")
+        grid.addWidget(rotate_ccw_button, 1, 1)
+
+        place_button = QPushButton("Place")
+        grid.addWidget(place_button, 0, 2)
+
+        delete_button = QPushButton("Delete")
+        grid.addWidget(delete_button, 1, 2)
+
+        self.map = Map()
+
+    def solve(self):
+        try:
+            tile = Tile.from_string(self.tile_string.text())
+        except (AssertionError, KeyError):
+            return  # bad tile string-- do nothing
+
+        placements = self.map.suggest_placements(tile)
+        pos, ori = placements.pop()
+        print(tile, pos, ori)
+        self.map[pos] = (tile, ori)
 
 
 def main():
-    map = Map()
-    while True:
-        string = input("Next tile string: ")
-        tile = Tile.from_string(string)
-        placements = map.suggest_placements(tile)
-        pos, ori = placements.pop()
-        print(string, pos, ori)
-        map[pos] = (tile, ori)
+    app = QApplication(sys.argv)
+    main_window = MainWindow()
+    main_window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
