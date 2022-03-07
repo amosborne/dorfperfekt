@@ -2,45 +2,83 @@ import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Polygon
 
-cmap = LinearSegmentedColormap.from_list("gr", ["g", "w", "r"])
+from dorfperfekt.tile import Terrain
+
+CMAP = LinearSegmentedColormap.from_list("gr", ["g", "w", "r"])
+
+angles = np.linspace(start=0, stop=360, num=6, endpoint=False)
+angles = np.deg2rad(angles)
+
+DIST = np.cos(np.deg2rad(30))
+XVEC = np.array([0, 1])
+YVEC = np.array([DIST, np.sin(np.deg2rad(30))])
+VERTICES = np.transpose(np.vstack((np.cos(angles), np.sin(angles))))
+
+TERRAIN_COLORS = {
+    Terrain.GRASS: "lightgreen",
+    Terrain.FOREST: "darkgreen",
+    Terrain.RANCH: "gold",
+    Terrain.DWELLING: "firebrick",
+    Terrain.WATER: "steelblue",
+    Terrain.STATION: "slategray",
+    Terrain.TRAIN: "tab:brown",
+    Terrain.COAST: "aqua",
+}
 
 
-def hex_coordinates(pos):
-    dist = np.cos(np.deg2rad(30))
-    xvec = np.array([0, 1]) * pos[0]
-    yvec = np.array([dist, np.sin(np.deg2rad(30))]) * pos[1]
-    origin = (xvec + yvec) * 2 * dist
-
-    angles = np.linspace(start=0, stop=360, num=6, endpoint=False)
-    angles = np.deg2rad(angles)
-    vertices = np.transpose(np.vstack((np.cos(angles), np.sin(angles))))
-
-    return origin, vertices + origin
+def pos2coords(pos):
+    return np.matmul(pos, np.vstack((XVEC, YVEC))) * 2 * DIST
 
 
-def draw_position_map(ax, tilemap, movelist=[]):
-    ax.clear()
-    ax.set_aspect("equal")
-    ax.axis("off")
+def coords2pos(coords):
+    coords = np.array(coords) / (2 * DIST)
+    pos = np.linalg.solve(np.vstack((XVEC, YVEC)).T, coords.T).T
+    return tuple([int(np.rint(p)) for p in pos])
 
-    for pos in tilemap:
-        _, vertices = hex_coordinates(pos)
-        color = "yellow" if tilemap.is_ruined_position(pos) else "blue"
-        patch = Polygon(vertices, edgecolor="black", facecolor=color)
+
+def format_map(draw_map):
+    def wrapper(*args, **kwargs):
+        ax = kwargs["ax"] if "ax" in kwargs else args[0]
+        ax.clear()
+        ax.set_aspect("equal")
+        ax.axis("off")
+        draw_map(*args, **kwargs)
+        ax.autoscale()
+
+    return wrapper
+
+
+@format_map
+def draw_position_map(ax, tilemap, movelist):
+    def draw_tile(pos, color):
+        coords = pos2coords(pos)
+        corners = coords + VERTICES
+        patch = Polygon(corners, edgecolor="black", facecolor=color)
         ax.add_patch(patch)
 
-    cidx = np.linspace(0, 1, len(movelist))
+    for pos in tilemap:
+        color = "yellow" if tilemap.is_ruined_position(pos) else "blue"
+        draw_tile(pos, color)
+
+    color = CMAP(np.linspace(0, 1, len(movelist)))
     for idx, move in enumerate(movelist):
-        color = cmap(cidx[idx])
         for pos, _ in move:
-            _, vertices = hex_coordinates(pos)
-            patch = Polygon(vertices, edgecolor="black", facecolor=color)
-            ax.add_patch(patch)
-
-    ax.autoscale()
+            draw_tile(pos, color[idx])
 
 
-def draw_terrain_map(ax, map):
-    ax.clear()
-    ax.set_aspect("equal")
-    ax.axis("off")
+@format_map
+def draw_terrain_map(ax, placements):
+    for idx, (pos, tile, ori) in enumerate(placements):
+        color = "black" if idx < len(placements) - 1 else "white"
+        coords = pos2coords(pos)
+        corners = coords + VERTICES
+        corners = np.vstack((corners, corners[0]))
+        corners = np.flipud(corners)
+        for k in range(len(corners) - 1):
+            subpatch_corners = [coords, corners[k], corners[k + 1]]
+            subpatch = Polygon(
+                subpatch_corners,
+                edgecolor=color,
+                facecolor=TERRAIN_COLORS[tile[k + 2 - ori]],
+            )
+            ax.add_patch(subpatch)

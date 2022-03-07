@@ -15,15 +15,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from dorfperfekt.display import draw_position_map, draw_terrain_map, hex_coordinates
+from dorfperfekt.display import coords2pos, draw_position_map, draw_terrain_map
 from dorfperfekt.map import Map
 from dorfperfekt.tile import Tile
-
-# def on_click(event):
-#     if event.inaxes is not None:
-#         print(event.xdata, event.ydata)
-#     else:
-#         print("Clicked ouside axes bounds but inside plot window")
 
 
 class MainWindow(QMainWindow):
@@ -41,8 +35,8 @@ class MainWindow(QMainWindow):
         fig = Figure()
         self.position_map_ax = fig.add_subplot(1, 1, 1)
         self.position_map_canvas = FigureCanvas(fig)
+        self.position_map_canvas.callbacks.connect("button_press_event", self.focus)
         vbox.addWidget(self.position_map_canvas, stretch=2)
-        # canvas.callbacks.connect("button_press_event", on_click)
 
         fig = Figure()
         self.terrain_map_ax = fig.add_subplot(1, 1, 1)
@@ -65,9 +59,11 @@ class MainWindow(QMainWindow):
         grid.addWidget(solve_button, 1, 0)
 
         rotate_cw_button = QPushButton("Rotate CW")
+        rotate_cw_button.clicked.connect(lambda: self.rotate(1))
         grid.addWidget(rotate_cw_button, 0, 1)
 
         rotate_ccw_button = QPushButton("Rotate CCW")
+        rotate_ccw_button.clicked.connect(lambda: self.rotate(-1))
         grid.addWidget(rotate_ccw_button, 1, 1)
 
         place_button = QPushButton("Place")
@@ -75,41 +71,93 @@ class MainWindow(QMainWindow):
         grid.addWidget(place_button, 0, 2)
 
         delete_button = QPushButton("Delete")
+        delete_button.clicked.connect(self.delete)
         grid.addWidget(delete_button, 1, 2)
 
         self.map = Map()
+        self.movelist = []
+        self.focus_pos = None
+        self.draw_position_map()
+        self.draw_terrain_map()
 
-        draw_position_map(self.position_map_ax, self.map)
+    def draw_position_map(self):
+        draw_position_map(self.position_map_ax, self.map, self.movelist)
         self.position_map_canvas.draw()
         self.position_map_canvas.flush_events()
 
-        draw_terrain_map(self.terrain_map_ax, self.map)
+    def draw_terrain_map(self):
+        if self.focus_pos is None:
+            placements = []
+        else:
+            nearby = {pos for _, pos in self.map.neighbors(self.focus_pos)}
+            for _ in range(3):
+                nearby |= {
+                    pos for npos in nearby for _, pos in self.map.neighbors(npos)
+                }
+
+            placements = [(npos, *self.map[npos]) for npos in nearby]
+
+            if self.new_tile_focus:
+                placements.append((self.focus_pos, self.tile, self.ori))
+            else:
+                placements.append((self.focus_pos, *self.map[self.focus_pos]))
+
+        draw_terrain_map(self.terrain_map_ax, placements)
         self.terrain_map_canvas.draw()
         self.terrain_map_canvas.flush_events()
 
     def solve(self):
         try:
-            tile = Tile.from_string(self.tile_string.text())
+            self.tile = Tile.from_string(self.tile_string.text())
         except (AssertionError, KeyError):
             return  # bad tile string-- do nothing
 
-        movelist = self.map.suggest_placements(tile)
-        move = movelist[0].pop()
-        movelist[0].add(move)
-        self.to_place = (tile, *move)
-        print(self.to_place)
+        self.movelist = self.map.suggest_placements(self.tile)
+        self.focus_pos = None
+        self.draw_position_map()
+        self.draw_terrain_map()
 
-        draw_position_map(self.position_map_ax, self.map, movelist)
-        self.position_map_canvas.draw()
-        self.position_map_canvas.flush_events()
+    def focus(self, event):
+        if event.inaxes is not None:
+            moves = [(mpos, ori) for mset in self.movelist for mpos, ori in mset]
+            pos = coords2pos((event.xdata, event.ydata))
+            self.new_tile_focus = pos in list(zip(*moves))[0] if moves else False
+            self.focus_pos = pos if pos in self.map or self.new_tile_focus else None
+
+            if self.new_tile_focus:
+                idx = list(zip(*moves))[0].index(pos)
+                self.ori = list(zip(*moves))[1][idx]
+
+        else:
+            self.focus_pos = None
+
+        self.draw_terrain_map()
 
     def place(self):
-        tile, pos, ori = self.to_place
-        self.map[pos] = (tile, ori)
+        if self.focus_pos is not None and self.new_tile_focus:
+            self.map[self.focus_pos] = (self.tile, self.ori)
+            self.focus_pos = None
+            self.movelist = []
+            self.draw_position_map()
+            self.draw_terrain_map()
+            self.tile_string.setText("")
 
-        draw_position_map(self.position_map_ax, self.map)
-        self.position_map_canvas.draw()
-        self.position_map_canvas.flush_events()
+    def rotate(self, direc):
+        if self.focus_pos is not None and self.new_tile_focus:
+            self.ori += direc
+            while not self.map.is_valid_placement(self.tile, self.focus_pos, self.ori):
+                self.ori += direc
+
+            self.draw_terrain_map()
+
+    def delete(self):
+        if self.focus_pos is not None and not self.new_tile_focus:
+            del self.map[self.focus_pos]
+            self.focus_pos = None
+            self.movelist = []
+            self.draw_position_map()
+            self.draw_terrain_map()
+            self.tile_string.setText("")
 
 
 def main():
