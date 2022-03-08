@@ -5,10 +5,12 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -23,7 +25,7 @@ from dorfperfekt.tile import Tile
 class MainWindow(QMainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
-        self.setWindowTitle("Dorfperfekt")
+        self.setWindowTitle("Dorfperfekt[*]")
         self.setMinimumSize(QSize(600, 600))
 
         central = QWidget(self)
@@ -74,11 +76,77 @@ class MainWindow(QMainWindow):
         delete_button.clicked.connect(self.delete)
         grid.addWidget(delete_button, 1, 2)
 
+        menu = self.menuBar()
+        file_menu = menu.addMenu("File")
+
+        open_action = file_menu.addAction("Open...")
+        open_action.triggered.connect(self.open)
+
+        save_action = file_menu.addAction("Save")
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(self.save)
+
+        saveas_action = file_menu.addAction("Save as...")
+        saveas_action.triggered.connect(self.saveas)
+
+        self.filename = None
         self.map = Map()
+        self.refresh()
+
+    def refresh(self, modified=False):
         self.movelist = []
         self.focus_pos = None
         self.draw_position_map()
         self.draw_terrain_map()
+        self.tile_string.setText("")
+        self.setWindowModified(modified)
+
+    def open(self):
+        if self.isWindowModified():
+            ret = QMessageBox.warning(
+                self,
+                "Dorfperfekt -- Warning",
+                "Current file is not saved!",
+                QMessageBox.Ok | QMessageBox.Cancel,
+            )
+            if ret is QMessageBox.Cancel:
+                return
+
+        filename = QFileDialog.getOpenFileName(self)[0]
+        if filename:
+            self.map = Map.from_file(filename)
+            self.filename = filename
+            self.refresh()
+
+    def closeEvent(self, event):
+        if self.isWindowModified():
+            ret = QMessageBox.warning(
+                self,
+                "Dorfperfekt -- Warning",
+                "Current file is not saved!",
+                QMessageBox.Ok | QMessageBox.Cancel,
+            )
+            if ret is QMessageBox.Cancel:
+                event.ignore()
+                return
+
+        event.accept()
+
+    def save(self):
+        if not self.isWindowModified():
+            return
+        elif self.filename is None:
+            self.saveas()
+        else:
+            self.map.write_file(self.filename)
+            self.setWindowModified(False)
+
+    def saveas(self):
+        filename = QFileDialog.getSaveFileName(self)[0]
+        if filename:
+            self.map.write_file(filename)
+            self.filename = filename
+            self.setWindowModified(False)
 
     def draw_position_map(self):
         draw_position_map(self.position_map_ax, self.map, self.movelist)
@@ -136,11 +204,7 @@ class MainWindow(QMainWindow):
     def place(self):
         if self.focus_pos is not None and self.new_tile_focus:
             self.map[self.focus_pos] = (self.tile, self.ori)
-            self.focus_pos = None
-            self.movelist = []
-            self.draw_position_map()
-            self.draw_terrain_map()
-            self.tile_string.setText("")
+            self.refresh(modified=True)
 
     def rotate(self, direc):
         if self.focus_pos is not None and self.new_tile_focus:
@@ -153,11 +217,7 @@ class MainWindow(QMainWindow):
     def delete(self):
         if self.focus_pos is not None and not self.new_tile_focus:
             del self.map[self.focus_pos]
-            self.focus_pos = None
-            self.movelist = []
-            self.draw_position_map()
-            self.draw_terrain_map()
-            self.tile_string.setText("")
+            self.refresh(modified=True)
 
 
 def main():
