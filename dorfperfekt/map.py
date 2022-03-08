@@ -1,5 +1,5 @@
 import re
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import MutableMapping
 
 from .tile import Terrain, Tile
@@ -24,7 +24,8 @@ PERFECT_ADDITIONS = {
 
 class Map(MutableMapping):
     def __init__(self):
-        self.tiles = {(0, 0): (Tile.from_string("g"), 0)}
+        self.tiles = OrderedDict()
+        self.tiles[0, 0] = (Tile.from_string("g"), 0)
 
     @staticmethod
     def from_file(filepath):
@@ -39,6 +40,13 @@ class Map(MutableMapping):
                 map_from_file[pos] = (tile, ori)
 
         return map_from_file
+
+    def write_file(self, filepath):
+        with open(filepath, "w") as file:
+            fstring = "{} {:d} {:d} {:d}\n"
+            for pos, (tile, ori) in self.items():
+                line = fstring.format(tile.to_string(), *pos, ori)
+                file.write(line)
 
     def __getitem__(self, key):
         return self.tiles[key]
