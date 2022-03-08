@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from collections.abc import MutableMapping
 
@@ -24,6 +25,20 @@ PERFECT_ADDITIONS = {
 class Map(MutableMapping):
     def __init__(self):
         self.tiles = {(0, 0): (Tile.from_string("g"), 0)}
+
+    @staticmethod
+    def from_file(filepath):
+        map_from_file = Map()
+        pattern = r"^([GFRDWSTC]{6}) (-?\d+) (-?\d+) ([0-6])$"
+        with open(filepath) as file:
+            for line in file:
+                match = re.match(pattern, line)
+                tile = Tile.from_string(match[1])
+                pos = (int(match[2]), int(match[3]))
+                ori = int(match[4])
+                map_from_file[pos] = (tile, ori)
+
+        return map_from_file
 
     def __getitem__(self, key):
         return self.tiles[key]
