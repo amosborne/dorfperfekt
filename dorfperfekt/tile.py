@@ -4,6 +4,10 @@ from enum import Enum
 Terrain = Enum("Terrain", "GRASS FOREST RANCH DWELLING WATER STATION TRAIN COAST")
 
 
+def terrains2string(terrains):
+    return "".join([terrain.name[0] for terrain in terrains])
+
+
 class Tile(Sequence):
     def __init__(self, terrain):
         assert len(terrain) == 6
