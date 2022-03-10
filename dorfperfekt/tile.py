@@ -9,6 +9,16 @@ class Tile(Sequence):
         assert len(terrain) == 6
         self.terrain = terrain
 
+        self.string = "".join([terrain.name[0] for terrain in self.terrain])
+
+        hashstring = self.string
+        for idx in range(6):
+            newstring = self.string[idx:] + self.string[:idx]
+            if newstring < hashstring:
+                hashstring = newstring
+
+        self.hash = hash(hashstring)
+
     @staticmethod
     def from_string(string):
         string = string.upper()
@@ -16,14 +26,11 @@ class Tile(Sequence):
         terrain = {t.name[0]: t for t in Terrain}
         return Tile([terrain[s] for s in string])
 
-    def to_string(self):
-        return "".join([terrain.name[0] for terrain in self.terrain])
-
     def __repr__(self):
-        return self.to_string()
+        return self.string
 
     def __eq__(self, other):
-        return self.to_string() in other.to_string() * 2
+        return hash(self) == hash(other)
 
     def __getitem__(self, key):
         return self.terrain[key % 6]
@@ -33,3 +40,6 @@ class Tile(Sequence):
 
     def __len__(self):
         return 6
+
+    def __hash__(self):
+        return self.hash

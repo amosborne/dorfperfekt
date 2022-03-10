@@ -7,25 +7,24 @@ def test_to_string():
             Terrain.GRASS,
             Terrain.FOREST,
             Terrain.RANCH,
-            Terrain.RANCH,
-            Terrain.RANCH,
-            Terrain.RANCH,
+            Terrain.DWELLING,
+            Terrain.WATER,
+            Terrain.TRAIN,
         ]
     )
-    assert tile.to_string() == "GFRRRR"
-    assert tile[1] is Terrain.FOREST
-    assert tile[7] is Terrain.FOREST
+    assert tile.string == "GFRDWT"
+    assert tile[1] is tile[7] is Terrain.FOREST
     assert len(tile) == 6
 
 
 def test_from_string():
     tile = Tile.from_string("gfrrrr")
-    assert tile.to_string() == "GFRRRR"
+    assert tile.string == "GFRRRR"
 
 
 def test_from_letter():
     tile = Tile.from_string("w")
-    assert tile.to_string() == "WWWWWW"
+    assert tile.string == "WWWWWW"
 
 
 def test_equality():

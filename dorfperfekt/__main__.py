@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from dorfperfekt.display import coords2pos, draw_position_map, draw_terrain_map
-from dorfperfekt.map import Map
+from dorfperfekt.tilemap import TileMap
 from dorfperfekt.tile import Tile
 
 
@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
         saveas_action.triggered.connect(self.saveas)
 
         self.filename = None
-        self.map = Map()
+        self.map = TileMap()
         self.refresh()
 
     def refresh(self, modified=False):
@@ -114,7 +114,7 @@ class MainWindow(QMainWindow):
 
         filename = QFileDialog.getOpenFileName(self)[0]
         if filename:
-            self.map = Map.from_file(filename)
+            self.map = TileMap.from_file(filename)
             self.filename = filename
             self.refresh()
 
