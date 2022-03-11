@@ -56,10 +56,8 @@ def draw_position_map(ax, tilemap, movelist):
         patch = Polygon(corners, edgecolor=edge, facecolor=color)
         ax.add_patch(patch)
 
-    for pos in tilemap:
-        color = (
-            "lightsteelblue" if tilemap.is_ruined_position(pos) else "lightslategrey"
-        )
+    for pos in tilemap.tiles:
+        color = "lightsteelblue" if pos in tilemap.ruined else "lightslategrey"
         draw_tile(pos, color, "white")
 
     color = CMAP(np.linspace(0, 1, len(movelist)))
@@ -70,7 +68,7 @@ def draw_position_map(ax, tilemap, movelist):
 
 @format_map
 def draw_terrain_map(ax, placements):
-    for idx, (pos, tile, ori) in enumerate(placements):
+    for idx, (pos, terrains) in enumerate(placements):
         color = None if idx < len(placements) - 1 else "black"
         coords = pos2coords(pos)
         corners = coords + VERTICES
@@ -81,6 +79,6 @@ def draw_terrain_map(ax, placements):
             subpatch = Polygon(
                 subpatch_corners,
                 edgecolor=color,
-                facecolor=TERRAIN_COLORS[tile[k + 2 - ori]],
+                facecolor=TERRAIN_COLORS[terrains[(k + 2) % 6]],
             )
             ax.add_patch(subpatch)

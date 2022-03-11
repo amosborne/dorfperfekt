@@ -151,7 +151,7 @@ class TileMap:
     def rate_placement(self, pos, tile, ori):
         # A placement's rating is a tuple where lower numbers are better.
         #  1. (+) Number of tiles newly ruined by the placement (includes self).
-        #  2. (+) Sum of all perfect alternate tiles for open adjacencies.
+        #  2. (-) Sum of all perfect alternate tiles for open adjacencies.
 
         if not self.is_valid_placement(pos, tile, ori):
             return None
@@ -167,7 +167,7 @@ class TileMap:
 
         self.remove(pos)
 
-        return newly_ruined, adj_alternates
+        return newly_ruined, -adj_alternates
 
     def rate_position(self, pos, tile):
         rates = defaultdict(set)

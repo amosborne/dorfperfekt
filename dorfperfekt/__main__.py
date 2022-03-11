@@ -17,9 +17,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from dorfperfekt.display import coords2pos, draw_position_map, draw_terrain_map
-from dorfperfekt.tilemap import TileMap
-from dorfperfekt.tile import Tile
+from .display import coords2pos, draw_position_map, draw_terrain_map
+from .tile import Tile
+from .tilemap import TileMap, new_maptile
 
 
 class MainWindow(QMainWindow):
@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
         saveas_action.triggered.connect(self.saveas)
 
         self.filename = None
-        self.map = TileMap()
+        self.tilemap = TileMap()
         self.refresh()
 
     def refresh(self, modified=False):
@@ -114,7 +114,7 @@ class MainWindow(QMainWindow):
 
         filename = QFileDialog.getOpenFileName(self)[0]
         if filename:
-            self.map = TileMap.from_file(filename)
+            self.tilemap = TileMap.from_file(filename)
             self.filename = filename
             self.refresh()
 
@@ -138,18 +138,18 @@ class MainWindow(QMainWindow):
         elif self.filename is None:
             self.saveas()
         else:
-            self.map.write_file(self.filename)
+            self.tilemap.write_file(self.filename)
             self.setWindowModified(False)
 
     def saveas(self):
         filename = QFileDialog.getSaveFileName(self)[0]
         if filename:
-            self.map.write_file(filename)
+            self.tilemap.write_file(filename)
             self.filename = filename
             self.setWindowModified(False)
 
     def draw_position_map(self):
-        draw_position_map(self.position_map_ax, self.map, self.movelist)
+        draw_position_map(self.position_map_ax, self.tilemap, self.movelist)
         self.position_map_canvas.draw()
         self.position_map_canvas.flush_events()
 
@@ -157,18 +157,16 @@ class MainWindow(QMainWindow):
         if self.focus_pos is None:
             placements = []
         else:
-            nearby = {pos for _, pos in self.map.neighbors(self.focus_pos)}
-            for _ in range(3):
-                nearby |= {
-                    pos for npos in nearby for _, pos in self.map.neighbors(npos)
-                }
-
-            placements = [(npos, *self.map[npos]) for npos in nearby]
+            tiles = self.tilemap.tiles.items()
+            placements = [(pos, maptile.terrains) for pos, maptile in tiles]
 
             if self.new_tile_focus:
-                placements.append((self.focus_pos, self.tile, self.ori))
+                maptile = new_maptile(self.focus_pos, self.tile, self.ori)
+                placements.append((self.focus_pos, maptile.terrains))
             else:
-                placements.append((self.focus_pos, *self.map[self.focus_pos]))
+                placements.append(
+                    (self.focus_pos, self.tilemap.tiles[self.focus_pos].terrains)
+                )
 
         draw_terrain_map(self.terrain_map_ax, placements)
         self.terrain_map_canvas.draw()
@@ -180,21 +178,30 @@ class MainWindow(QMainWindow):
         except (AssertionError, KeyError):
             return  # bad tile string-- do nothing
 
-        self.movelist = self.map.suggest_placements(self.tile)
+        self.movelist = self.tilemap.suggest_placements(self.tile)
         self.focus_pos = None
         self.draw_position_map()
         self.draw_terrain_map()
 
     def focus(self, event):
         if event.inaxes is not None:
-            moves = [(mpos, ori) for mset in self.movelist for mpos, ori in mset]
             pos = coords2pos((event.xdata, event.ydata))
-            self.new_tile_focus = pos in list(zip(*moves))[0] if moves else False
-            self.focus_pos = pos if pos in self.map or self.new_tile_focus else None
 
-            if self.new_tile_focus:
-                idx = list(zip(*moves))[0].index(pos)
-                self.ori = list(zip(*moves))[1][idx]
+            if self.movelist:
+                all_moves = set().union(*self.movelist)
+                move_positions, move_orientations = zip(*all_moves)
+                self.new_tile_focus = pos in move_positions
+
+                if self.new_tile_focus:
+                    idx = move_positions.index(pos)
+                    self.ori = move_orientations[idx]
+
+            else:
+                self.new_tile_focus = False
+
+            tile_positions = self.tilemap.tiles.keys()
+            is_focusing = (pos in tile_positions) or self.new_tile_focus
+            self.focus_pos = pos if is_focusing else None
 
         else:
             self.focus_pos = None
@@ -203,20 +210,22 @@ class MainWindow(QMainWindow):
 
     def place(self):
         if self.focus_pos is not None and self.new_tile_focus:
-            self.map[self.focus_pos] = (self.tile, self.ori)
+            self.tilemap.place(self.focus_pos, self.tile, self.ori)
             self.refresh(modified=True)
 
     def rotate(self, direc):
         if self.focus_pos is not None and self.new_tile_focus:
             self.ori += direc
-            while not self.map.is_valid_placement(self.tile, self.focus_pos, self.ori):
+            while not self.tilemap.is_valid_placement(
+                self.focus_pos, self.tile, self.ori
+            ):
                 self.ori += direc
 
             self.draw_terrain_map()
 
     def delete(self):
         if self.focus_pos is not None and not self.new_tile_focus:
-            del self.map[self.focus_pos]
+            self.tilemap.remove(self.focus_pos)
             self.refresh(modified=True)
 
 
