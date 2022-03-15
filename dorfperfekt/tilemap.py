@@ -1,202 +1,175 @@
 import re
 from collections import OrderedDict, defaultdict, namedtuple
+from collections.abc import MutableMapping
+from functools import cache
 
-from .tile import Terrain, Tile, terrains2string
+from .tile import Tile, validate_terrains, validate_tiles
+
+
+class InvalidTilePlacementError(ValueError):
+    pass
+
 
 OFFSETS = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
 
-RESTRICTED_TERRAINS = {Terrain.WATER, Terrain.TRAIN}
-RESTRICTED_EXCEPTIONS = [
-    {Terrain.WATER, Terrain.STATION},
-    {Terrain.WATER, Terrain.COAST},
-    {Terrain.TRAIN, Terrain.STATION},
-]
-PERFECT_ACCEPTIONS = [
-    {Terrain.WATER, Terrain.STATION},
-    {Terrain.WATER, Terrain.COAST},
-    {Terrain.TRAIN, Terrain.STATION},
-    {Terrain.COAST, Terrain.GRASS},
-    {Terrain.COAST, Terrain.STATION},
-    {Terrain.GRASS, Terrain.STATION},
-]
+
+@cache
+def adjacent_positions(pos):
+    return [(pos[0] + off[0], pos[1] + off[1]) for off in OFFSETS]
 
 
-MapTile = namedtuple("MapTile", "adj terrains")
-
-
-def new_maptile(pos, tile, ori):
-    adj = [(pos[0] + off[0], pos[1] + off[1]) for off in OFFSETS]
-    terrains = tuple([tile[k - ori] for k in range(6)])
-    return MapTile(adj, terrains)
-
-
-class TileMap:
+class TileMap(MutableMapping):
     def __init__(self):
         self.tiles = OrderedDict()
         self.counter = defaultdict(int)
         self.ruined = list()
-        self.place(pos=(0, 0), tile=Tile.from_string("G"), ori=0)
+        self.open = set([(0, 0)])
+        self[0, 0] = Tile("g")
 
     @staticmethod
     def from_file(filepath):
         tilemap = TileMap()
-        tilemap.remove(pos=(0, 0))
-        pattern = r"^([GFRDWSTC]{6}) (-?\d+) (-?\d+)$"
+        del tilemap[0, 0]
+        pattern = r"^([GFRDWSTC]{6}) (-?\d+) (-?\d+) (-?\d+)$"
         with open(filepath) as file:
             for line in file:
                 match = re.match(pattern, line)
-                tile = Tile.from_string(match[1])
-                pos = (int(match[2]), int(match[3]))
-                tilemap.place(pos, tile, 0)
+                tile = Tile(match[1])
+                tile.ori = int(match[2])
+                pos = (int(match[3]), int(match[4]))
+                tilemap[pos] = tile
 
         return tilemap
 
     def write_file(self, filepath):
         with open(filepath, "w") as file:
-            fstring = "{} {:d} {:d}\n"
-            for pos, maptile in self.tiles.items():
-                string = terrains2string(maptile.terrains)
-                line = fstring.format(string, *pos)
+            fstring = "{} {:d} {:d} {:d}\n"
+            for pos, tile in self.tiles.items():
+                line = fstring.format(tile.string, tile.ori, *pos)
                 file.write(line)
 
-    def place(self, pos, tile, ori):
-        assert self.is_valid_placement(pos, tile, ori)
-        maptile = new_maptile(pos, tile, ori)
-        self.tiles[pos] = maptile
-        self.counter[tile] += 1
+    def __setitem__(self, key, value):
+        outer = self.outer_tile(key)
+        this_ori = (value.ori - outer.ori) % 6
+        is_valid, is_perfect = validate_tiles(value, outer)[this_ori]
 
-        ruined, adj_ruined = self.is_ruined_by_placement(pos, tile, ori)
-        if ruined:
-            self.ruined.append(pos)
-        for adj_pos, adj_ruin in zip(maptile.adj, adj_ruined):
-            if adj_ruin:
-                self.ruined.append(adj_pos)
+        if not (is_valid and key in self.open):
+            raise InvalidTilePlacementError
 
-        return maptile
+        self.tiles[key] = value
+        self.counter[value.copy()] += 1
 
-    def remove(self, pos):
-        maptile = self.tiles.pop(pos)
-        string = terrains2string(maptile.terrains)
-        tile = Tile.from_string(string)
-        self.counter[tile] -= 1
-        if not self.counter[tile]:
-            del self.counter[tile]
+        adj = adjacent_positions(key)
 
-        ruined, adj_ruined = self.is_ruined_by_placement(pos, tile, 0)
-        if ruined:
-            self.ruined.remove(pos)
-        for adj_pos, adj_ruin in zip(maptile.adj, adj_ruined):
-            if adj_ruin:
-                self.ruined.remove(adj_pos)
+        if is_perfect.count(False):
+            adj = adj[(6 - this_ori) :] + adj[: (6 - this_ori)]
+            for adj_pos, perfect in zip(adj, is_perfect):
+                if perfect is False:
+                    self.ruined.append(key)
+                    self.ruined.append(adj_pos)
 
-    def adj_terrains(self, pos):
-        adj_terrains = [None] * 6
-        adj = [(pos[0] + off[0], pos[1] + off[1]) for off in OFFSETS]
-        for ori, adj_pos in enumerate(adj):
-            if adj_pos in self.tiles:
-                adj_maptile = self.tiles[adj_pos]
-                adj_terrains[ori] = adj_maptile.terrains[(ori + 3) % 6]
+        self.open.remove(key)
+        [self.open.add(pos) for pos in adj if pos not in self]
 
-        return tuple(adj_terrains)
+    def __getitem__(self, key):
+        return self.tiles[key]
 
-    def is_valid_placement(self, pos, tile, ori):
-        if pos in self.tiles:
-            return False
+    def __delitem__(self, key):
+        inner = self[key]
+        outer = self.outer_tile(key)
+        this_ori = (inner.ori - outer.ori) % 6
+        _, is_perfect = validate_tiles(inner, outer)[this_ori]
 
-        maptile = new_maptile(pos, tile, ori)
-        for terrains in zip(self.adj_terrains(pos), maptile.terrains):
-            if None in terrains:
-                continue
+        del self.tiles[key]
+        self.counter[inner] -= 1
+        if not self.counter[inner]:
+            del self.counter[inner]
 
-            matching = terrains[0] is terrains[1]
-            restricted = not RESTRICTED_TERRAINS.isdisjoint(set(terrains))
-            excepted = set(terrains) in RESTRICTED_EXCEPTIONS
+        adj = adjacent_positions(key)
 
-            if restricted and not (matching or excepted):
-                return False
+        if is_perfect.count(False):
+            adj = adj[(6 - this_ori) :] + adj[: (6 - this_ori)]
+            for adj_pos, perfect in zip(adj, is_perfect):
+                if perfect is False:
+                    self.ruined.remove(key)
+                    self.ruined.remove(adj_pos)
 
-        return True
+        self.open.add(key)
+        for adj_pos in [pos for pos in adj if pos not in self]:
+            adj = adjacent_positions(adj_pos)
+            found = any([pos in self for pos in adj])
+            if not found:
+                self.open.discard(adj_pos)
 
-    def is_ruined_by_placement(self, pos, tile, ori):
-        is_ruined = False
-        is_adj_ruined = [False] * 6
-        maptile = new_maptile(pos, tile, ori)
-        terrain_pairs = zip(self.adj_terrains(pos), maptile.terrains)
-        for ori, terrains in enumerate(terrain_pairs):
-            if None in terrains:
-                continue
+    def __iter__(self):
+        return self.tiles.__iter__()
 
-            matching = terrains[0] is terrains[1]
-            accepted = set(terrains) in PERFECT_ACCEPTIONS
+    def __len__(self):
+        return len(self.tiles)
 
-            if not (matching or accepted):
-                is_ruined = True
-                is_adj_ruined[ori] = True
+    def outer_tile(self, pos):
+        terrains = ["o"] * 6
+        for ori, adj in enumerate(adjacent_positions(pos)):
+            if adj in self:
+                tile = self[adj]
+                terrains[ori] = tile[(ori - tile.ori + 3) % 6].name[0]
 
-        return is_ruined, is_adj_ruined
+        return Tile("".join(terrains))
 
-    def count_alternates(self, pos):
+    def perfect_alternates(self, pos):
         count = 0
-        for tile in self.counter:
+        pre_ruined = len(set(self.ruined))
+        for tile, subcount in self.counter.items():
             for ori in range(6):
-                if not self.is_valid_placement(pos, tile, ori):
-                    continue
-
-                if not self.is_ruined_by_placement(pos, tile, ori)[0]:
-                    count += self.counter[tile]
-                    break
+                try:
+                    tile.ori = ori
+                    self[pos] = tile
+                    post_ruined = len(set(self.ruined))
+                    del self[pos]
+                    newly_ruined = post_ruined - pre_ruined
+                    if not newly_ruined:
+                        count += subcount
+                        break
+                except InvalidTilePlacementError:
+                    pass
 
         return count
 
-    def rate_placement(self, pos, tile, ori):
-        # A placement's rating is a tuple where lower numbers are better.
-        #  1. (+) Number of tiles newly ruined by the placement (includes self).
-        #  2. (-) Sum of all perfect alternate tiles for open adjacencies.
+    def rate_placement(self, tile, pos):
+        pre_ruined = len(set(self.ruined))
 
-        if not self.is_valid_placement(pos, tile, ori):
-            return None
+        self[pos] = tile
 
-        ruined, adj_ruined = self.is_ruined_by_placement(pos, tile, ori)
-        newly_ruined = ruined + adj_ruined.count(True)
+        secondorder_alternates = sum(
+            [
+                self.perfect_alternates(adj)
+                for adj in adjacent_positions(pos)
+                if adj in self.open
+            ]
+        )
 
-        maptile = self.place(pos, tile, ori)
+        post_ruined = len(set(self.ruined))
 
-        adj_alternates = 0
-        for adj_pos in maptile.adj:
-            adj_alternates += self.count_alternates(adj_pos)
+        del self[pos]
 
-        self.remove(pos)
+        newly_ruined = post_ruined - pre_ruined
 
-        return newly_ruined, -adj_alternates
+        alternates = self.perfect_alternates(pos)
 
-    def rate_position(self, pos, tile):
-        rates = defaultdict(set)
-        for ori in range(6):
-            rate = self.rate_placement(pos, tile, ori)
-            if rate is not None:
-                rates[rate].add(ori)
+        return newly_ruined, alternates, secondorder_alternates
 
-        if not rates:
-            return None
+    def suggest_placements(self, string):
+        placements = defaultdict(set)
+        for pos in self.open:
+            for ori in range(6):
+                try:
+                    tile = Tile(string)
+                    tile.ori = ori
+                    score = self.rate_placement(tile, pos)
+                    placements[score].add((pos, tile))
+                except InvalidTilePlacementError:
+                    pass
 
-        scores = sorted(rates)
-        (newly_ruined, adj_alternates) = scores[0]
-        alternates = self.count_alternates(pos)
+        sorted_placements = [placements[key] for key in sorted(placements)]
 
-        return (newly_ruined, alternates, adj_alternates), rates[scores[0]]
-
-    def suggest_placements(self, tile):
-        openpos = set()
-        for maptile in self.tiles.values():
-            for adj in maptile.adj:
-                if adj not in self.tiles:
-                    openpos.add(adj)
-
-        rates = defaultdict(set)
-        for pos in openpos:
-            rate = self.rate_position(pos, tile)
-            if rate is not None:
-                score, oris = rate
-                rates[score] |= {(pos, ori) for ori in oris}
-
-        return [rates[score] for score in sorted(rates)]
+        return sorted_placements
