@@ -115,8 +115,9 @@ def test_scores():
 
     def group_scores(scores):
         grouped_scores = defaultdict(set)
-        for score, pos, tile in scores:
-            grouped_scores[score].add((pos, tile))
+        for pos, tilescores in scores:
+            for score, tile in tilescores:
+                grouped_scores[score].add((pos, tile))
 
         return [grouped_scores[score] for score in sorted(grouped_scores)]
 

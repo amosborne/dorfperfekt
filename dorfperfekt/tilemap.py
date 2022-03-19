@@ -1,7 +1,8 @@
 import re
 from collections import Counter, OrderedDict
 from collections.abc import MutableMapping
-from functools import cache
+
+from cachetools.func import lru_cache
 
 from .tile import Terrain, Tile, string2tile, terrains2tile, tile2string, validate_tiles
 
@@ -13,7 +14,7 @@ class InvalidTilePlacementError(ValueError):
 OFFSETS = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
 
 
-@cache
+@lru_cache(maxsize=64)
 def adjacent_positions(pos):
     return [(pos[0] + off[0], pos[1] + off[1]) for off in OFFSETS]
 
@@ -155,10 +156,13 @@ class TileMap(MutableMapping):
 
     def scores(self, terrains):
         for pos in self.open:
+            scores = set()
             for ori in range(6):
                 try:
                     tile = Tile(terrains, ori)
                     score = self.score(pos, tile)
-                    yield score, pos, tile
+                    scores.add((score, tile))
                 except InvalidTilePlacementError:
                     pass
+
+            yield pos, scores

@@ -1,16 +1,16 @@
-# import cProfile
 import filecmp
 import os
 from collections import defaultdict
 
-from dorfperfekt.tile import string2tile
-from dorfperfekt.tilemap import TileMap
+from dorfperfekt.tile import string2tile, validate_terrains, validate_tiles
+from dorfperfekt.tilemap import TileMap, adjacent_positions
 
 
 def group_scores(scores):
     grouped_scores = defaultdict(set)
-    for score, pos, tile in scores:
-        grouped_scores[score].add((pos, tile))
+    for pos, tilescores in scores:
+        for score, tile in tilescores:
+            grouped_scores[score].add((pos, tile))
 
     return [grouped_scores[score] for score in sorted(grouped_scores)]
 
@@ -49,7 +49,3 @@ def test_demo_game():
     tilemap.write_file(fileout)
     assert filecmp.cmp(filein, fileout)
     os.remove(fileout)
-
-    # cProfile.runctx("tilemap.suggest_placements(string='d')", globals(), locals())
-
-    # print(validate_tiles.cache_info())

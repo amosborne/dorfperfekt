@@ -1,7 +1,7 @@
 from collections import namedtuple
-from functools import cache
 
 from aenum import OrderedEnum, unique
+from cachetools.func import lfu_cache
 
 
 class InvalidTileDefinitionError(ValueError):
@@ -72,15 +72,19 @@ def tile2string(tile):
     return string[-tile.ori :] + string[: -tile.ori]
 
 
-def settify(func):
-    def wrapper(arg1, arg2):
-        return func(frozenset((arg1, arg2)))
+class SettifyCacheArguments:
+    def __init__(self, func):
+        self.func = func
 
-    return wrapper
+    def __call__(self, arg1, arg2):
+        return self.func(frozenset((arg1, arg2)))
+
+    def cache_info(self):
+        return self.func.cache_info()
 
 
-@settify
-@cache
+@SettifyCacheArguments
+@lfu_cache(maxsize=64)
 def validate_terrains(terrains):
     if Terrain.OPEN in terrains:
         return True, None
@@ -96,8 +100,8 @@ def validate_terrains(terrains):
     return not is_invalid, is_perfect
 
 
-@settify
-@cache
+@SettifyCacheArguments
+@lfu_cache(maxsize=262144)
 def validate_tiles(tiles):
     if len(tiles) == 1:
         return True, (True,) * 6
