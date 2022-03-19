@@ -18,8 +18,9 @@ from PySide6.QtWidgets import (
 )
 
 from .display import coords2pos, draw_position_map, draw_terrain_map
-from .tile import Tile
-from .tilemap import TileMap, new_maptile
+
+# from .tile import Tile
+from .tilemap import TileMap
 
 
 class MainWindow(QMainWindow):
@@ -95,7 +96,8 @@ class MainWindow(QMainWindow):
 
     def refresh(self, modified=False):
         self.movelist = []
-        self.focus_pos = None
+        self.move = None
+        self.select = None
         self.draw_position_map()
         self.draw_terrain_map()
         self.tile_string.setText("")
@@ -153,79 +155,60 @@ class MainWindow(QMainWindow):
         self.position_map_canvas.draw()
         self.position_map_canvas.flush_events()
 
-    def draw_terrain_map(self):
-        if self.focus_pos is None:
-            placements = []
+    def draw_terrain_map(self, focus=None):
+        if focus is None:
+            draw_terrain_map(self.terrain_map_ax, [])
+
         else:
-            tiles = self.tilemap.tiles.items()
-            placements = [(pos, maptile.terrains) for pos, maptile in tiles]
+            placements = self.tilemap.items()
+            placements.append(focus)
+            draw_terrain_map(self.terrain_map_ax, [])
 
-            if self.new_tile_focus:
-                maptile = new_maptile(self.focus_pos, self.tile, self.ori)
-                placements.append((self.focus_pos, maptile.terrains))
-            else:
-                placements.append(
-                    (self.focus_pos, self.tilemap.tiles[self.focus_pos].terrains)
-                )
-
-        draw_terrain_map(self.terrain_map_ax, placements)
         self.terrain_map_canvas.draw()
         self.terrain_map_canvas.flush_events()
 
     def solve(self):
-        try:
-            self.tile = Tile.from_string(self.tile_string.text())
-        except (AssertionError, KeyError):
-            return  # bad tile string-- do nothing
-
-        self.movelist = self.tilemap.suggest_placements(self.tile)
-        self.focus_pos = None
+        string = self.tile_string.text()
+        self.movelist = self.tilemap.suggest_placements(string)
         self.draw_position_map()
         self.draw_terrain_map()
 
     def focus(self, event):
         if event.inaxes is not None:
             pos = coords2pos((event.xdata, event.ydata))
+            moves_pos, moves_tile = zip(*set().union(*self.movelist))
 
-            if self.movelist:
-                all_moves = set().union(*self.movelist)
-                move_positions, move_orientations = zip(*all_moves)
-                self.new_tile_focus = pos in move_positions
-
-                if self.new_tile_focus:
-                    idx = move_positions.index(pos)
-                    self.ori = move_orientations[idx]
-
-            else:
-                self.new_tile_focus = False
-
-            tile_positions = self.tilemap.tiles.keys()
-            is_focusing = (pos in tile_positions) or self.new_tile_focus
-            self.focus_pos = pos if is_focusing else None
+            if pos in self.tilemap:
+                self.select = (pos, self.tilemap[pos])
+                self.draw_terrain_map(focus=self.select)
+            elif pos in moves_pos:
+                self.move = (pos, moves_tile[moves_pos.index(pos)])
+                self.draw_terrain_map(focus=self.move)
 
         else:
-            self.focus_pos = None
-
-        self.draw_terrain_map()
+            self.draw_terrain_map()
 
     def place(self):
-        if self.focus_pos is not None and self.new_tile_focus:
-            self.tilemap.place(self.focus_pos, self.tile, self.ori)
+        if self.move is not None:
+            self.tilemap[self.move[0]] = self.move[1]
             self.refresh(modified=True)
 
     def rotate(self, direc):
-        if self.focus_pos is not None and self.new_tile_focus:
-            self.ori += direc
-            while not self.tilemap.is_valid_placement(
-                self.focus_pos, self.tile, self.ori
-            ):
-                self.ori += direc
-
-            self.draw_terrain_map()
+        if self.move is not None:
+            moves = set().union(*self.movelist)
+            moves = {move for move in moves if move == self.move}
+            ori = self.move[1].ori
+            while True:
+                ori += direc % 6
+                for move in moves:
+                    if move[1].ori == ori:
+                        self.move = move
+                        self.draw_terrain_map(focus=self.move)
+                        return
 
     def delete(self):
-        if self.focus_pos is not None and not self.new_tile_focus:
-            self.tilemap.remove(self.focus_pos)
+        if self.select is not None:
+            del self.tilemap[self.select[0]]
             self.refresh(modified=True)
 
 

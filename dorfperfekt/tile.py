@@ -1,10 +1,25 @@
-from collections.abc import Sequence
-from enum import Enum
+from collections import namedtuple
 from functools import cache
 
-Terrain = Enum("Terrain", "GRASS FOREST RANCH DWELLING WATER STATION TRAIN COAST OPEN")
+from aenum import OrderedEnum, unique
 
-TERRAINS = {terrain.name[0]: terrain for terrain in Terrain}
+
+class InvalidTileDefinitionError(ValueError):
+    pass
+
+
+@unique
+class Terrain(OrderedEnum):
+    GRASS = "G"
+    FOREST = "F"
+    RANCH = "R"
+    DWELLING = "D"
+    WATER = "W"
+    STATION = "S"
+    TRAIN = "T"
+    COAST = "C"
+    OPEN = "O"
+
 
 RESTRICTED_TERRAINS = {Terrain.WATER, Terrain.TRAIN}
 
@@ -23,58 +38,50 @@ PERFECT_ACCEPTIONS = [
     {Terrain.GRASS, Terrain.STATION},
 ]
 
-
-class Tile(Sequence):
-    # A Tile is a sequence of six terrains. Every Tile has a default
-    # orientation, as determined by the alphabetical ordering of its
-    # definition string.
-    #
-    # Each index of a Tile is a terrain. The index is counted against
-    # the default orientation. The Tile also stores the true orientation
-    # as a separate field, which can be added to the index.
-
-    def __init__(self, string):
-        string = string.upper()
-        string = string * 6 if len(string) == 1 else string
-        assert len(string) == 6
-
-        self.string = string
-        self.ori = 0
-        for ori in range(6):
-            newstring = string[ori:] + string[:ori]
-            if newstring < self.string:
-                self.string = newstring
-                self.ori = ori
-
-        self.hash = hash(self.string)
-        self.terrain = [TERRAINS[letter] for letter in self.string]
-
-    def copy(self):
-        return Tile(self.string)
-
-    def __repr__(self):
-        return self.string
-
-    def __eq__(self, other):
-        return self.hash == hash(other)
-
-    def __getitem__(self, key):
-        return self.terrain[key % 6]
-
-    def __iter__(self):
-        return self.terrain.__iter__()
-
-    def __len__(self):
-        return 6
-
-    def __hash__(self):
-        return self.hash
+Tile = namedtuple("Tile", "terrains ori")
 
 
+def string2tile(string):
+    string = string.upper()
+    string = string * 6 if len(string) == 1 else string
+
+    try:
+        terrains = tuple(Terrain(t) for t in string)
+        return terrains2tile(terrains)
+    except ValueError:
+        raise InvalidTileDefinitionError
+
+
+def terrains2tile(terrains):
+    if len(terrains) != 6:
+        raise InvalidTileDefinitionError
+
+    final_terrains, final_ori = terrains, 0
+
+    for rot_ori in range(1, 6):
+        rot_terrains = tuple((*terrains[rot_ori:], *terrains[:rot_ori]))
+
+        if rot_terrains < final_terrains:
+            final_terrains, final_ori = rot_terrains, rot_ori
+
+    return Tile(final_terrains, final_ori)
+
+
+def tile2string(tile):
+    string = "".join([t.value for t in tile.terrains])
+    return string[-tile.ori :] + string[: -tile.ori]
+
+
+def settify(func):
+    def wrapper(arg1, arg2):
+        return func(frozenset((arg1, arg2)))
+
+    return wrapper
+
+
+@settify
 @cache
 def validate_terrains(terrains):
-    # Compare two terrains and return a tuple (is_valid, is_perfect).
-
     if Terrain.OPEN in terrains:
         return True, None
 
@@ -89,24 +96,21 @@ def validate_terrains(terrains):
     return not is_invalid, is_perfect
 
 
+@settify
 @cache
-def validate_tiles(inner, outer):
-    # Compare two tiles (inner versus outer) and return a list.
-    # Each element corresponds to the relative orientation of the tiles.
-    # Each element is a tuple (is_valid, is_perfect) where is_perfect
-    # is a tuple of the validate_terrains() is_perfect result at each side.
-    #
-    # The is_perfect tuple will contain None if the outer tile is open.
+def validate_tiles(tiles):
+    if len(tiles) == 1:
+        return True, (True,) * 6
 
-    ret = [None] * 6
-    for ori in range(6):
-        tile_is_valid = True
+    else:
         is_perfect = [None] * 6
-        for idx in range(6):
-            terrains = frozenset((inner[idx - ori], outer[idx]))
-            is_valid, is_perfect[idx] = validate_terrains(terrains)
-            tile_is_valid &= is_valid
+        inner, outer = tuple(tiles)
+        for ori in range(6):
+            inner_terrain = inner.terrains[(ori - inner.ori) % 6]
+            outer_terrain = outer.terrains[(ori - outer.ori) % 6]
+            is_valid, is_perfect[ori] = validate_terrains(inner_terrain, outer_terrain)
 
-        ret[ori] = (tile_is_valid, tuple(is_perfect))
+            if not is_valid:
+                return False, None
 
-    return ret
+        return True, tuple(is_perfect)

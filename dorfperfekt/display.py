@@ -56,14 +56,17 @@ def draw_position_map(ax, tilemap, movelist):
         patch = Polygon(corners, edgecolor=edge, facecolor=color)
         ax.add_patch(patch)
 
-    for pos in tilemap.tiles:
+    for pos in tilemap:
         color = "lightsteelblue" if pos in tilemap.ruined else "lightslategrey"
         draw_tile(pos, color, "white")
 
     color = CMAP(np.linspace(0, 1, len(movelist)))
-    for idx, move in enumerate(movelist):
-        for pos, _ in move:
-            draw_tile(pos, color[idx], "black")
+    drawn = set()
+    for idx, moveset in enumerate(movelist):
+        for pos, _ in moveset:
+            if pos not in drawn:
+                draw_tile(pos, color[idx], "black")
+                drawn.add(pos)
 
 
 @format_map

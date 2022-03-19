@@ -1,9 +1,9 @@
 import re
-from collections import OrderedDict, defaultdict, namedtuple
+from collections import Counter, OrderedDict
 from collections.abc import MutableMapping
 from functools import cache
 
-from .tile import Tile, validate_terrains, validate_tiles
+from .tile import Terrain, Tile, string2tile, terrains2tile, tile2string, validate_tiles
 
 
 class InvalidTilePlacementError(ValueError):
@@ -21,85 +21,81 @@ def adjacent_positions(pos):
 class TileMap(MutableMapping):
     def __init__(self):
         self.tiles = OrderedDict()
-        self.counter = defaultdict(int)
+        self.counter = Counter()
         self.ruined = list()
         self.open = set([(0, 0)])
-        self[0, 0] = Tile("g")
+        self[0, 0] = string2tile("g")
 
     @staticmethod
     def from_file(filepath):
         tilemap = TileMap()
         del tilemap[0, 0]
-        pattern = r"^([GFRDWSTC]{6}) (-?\d+) (-?\d+) (-?\d+)$"
+        pattern = r"^([GFRDWSTC]{6}) (-?\d+) (-?\d+)$"
         with open(filepath) as file:
             for line in file:
                 match = re.match(pattern, line)
-                tile = Tile(match[1])
-                tile.ori = int(match[2])
-                pos = (int(match[3]), int(match[4]))
+                tile = string2tile(match[1])
+                pos = (int(match[2]), int(match[3]))
                 tilemap[pos] = tile
 
         return tilemap
 
     def write_file(self, filepath):
         with open(filepath, "w") as file:
-            fstring = "{} {:d} {:d} {:d}\n"
+            fstring = "{} {:d} {:d}\n"
             for pos, tile in self.tiles.items():
-                line = fstring.format(tile.string, tile.ori, *pos)
+                line = fstring.format(tile2string(tile), *pos)
                 file.write(line)
 
-    def __setitem__(self, key, value):
-        outer = self.outer_tile(key)
-        this_ori = (value.ori - outer.ori) % 6
-        is_valid, is_perfect = validate_tiles(value, outer)[this_ori]
+    def __setitem__(self, pos, tile):
+        outer = self.outer_tile(pos)
+        valid, perfect = validate_tiles(tile, outer)
 
-        if not (is_valid and key in self.open):
+        if not (valid and pos in self.open):
             raise InvalidTilePlacementError
 
-        self.tiles[key] = value
-        self.counter[value.copy()] += 1
+        self.tiles[pos] = tile
+        self.open.remove(pos)
+        self.counter[tile.terrains] += 1
 
-        adj = adjacent_positions(key)
+        adj = adjacent_positions(pos)
 
-        if is_perfect.count(False):
-            adj = adj[(6 - this_ori) :] + adj[: (6 - this_ori)]
-            for adj_pos, perfect in zip(adj, is_perfect):
-                if perfect is False:
-                    self.ruined.append(key)
-                    self.ruined.append(adj_pos)
+        for adj_pos, adj_perfect in zip(adj, perfect):
+            if adj_perfect is False:
+                self.ruined.extend([pos, adj_pos])
 
-        self.open.remove(key)
-        [self.open.add(pos) for pos in adj if pos not in self]
+            if adj_pos not in self:
+                self.open.add(adj_pos)
 
-    def __getitem__(self, key):
-        return self.tiles[key]
+    def __getitem__(self, pos):
+        return self.tiles[pos]
 
-    def __delitem__(self, key):
-        inner = self[key]
-        outer = self.outer_tile(key)
-        this_ori = (inner.ori - outer.ori) % 6
-        _, is_perfect = validate_tiles(inner, outer)[this_ori]
+    def __delitem__(self, pos):
+        inner = self[pos]
+        outer = self.outer_tile(pos)
+        _, perfect = validate_tiles(inner, outer)
 
-        del self.tiles[key]
-        self.counter[inner] -= 1
-        if not self.counter[inner]:
-            del self.counter[inner]
+        del self.tiles[pos]
+        self.open.add(pos)
 
-        adj = adjacent_positions(key)
+        count = self.counter[inner.terrains]
+        if count == 1:
+            del self.counter[inner.terrains]
+        else:
+            self.counter[inner.terrains] = count - 1
 
-        if is_perfect.count(False):
-            adj = adj[(6 - this_ori) :] + adj[: (6 - this_ori)]
-            for adj_pos, perfect in zip(adj, is_perfect):
-                if perfect is False:
-                    self.ruined.remove(key)
-                    self.ruined.remove(adj_pos)
+        adj = adjacent_positions(pos)
 
-        self.open.add(key)
-        for adj_pos in [pos for pos in adj if pos not in self]:
-            adj = adjacent_positions(adj_pos)
-            found = any([pos in self for pos in adj])
-            if not found:
-                self.open.discard(adj_pos)
+        for adj_pos, adj_perfect in zip(adj, perfect):
+            if adj_perfect is False:
+                self.ruined.remove(pos)
+                self.ruined.remove(adj_pos)
+
+            if adj_pos not in self:
+                adj_adj = adjacent_positions(adj_pos)
+                found = any([pos in self for pos in adj_adj])
+                if not found:
+                    self.open.discard(adj_pos)
 
     def __iter__(self):
         return self.tiles.__iter__()
@@ -108,22 +104,21 @@ class TileMap(MutableMapping):
         return len(self.tiles)
 
     def outer_tile(self, pos):
-        terrains = ["o"] * 6
+        terrains = [Terrain.OPEN] * 6
         for ori, adj in enumerate(adjacent_positions(pos)):
             if adj in self:
                 tile = self[adj]
-                terrains[ori] = tile[(ori - tile.ori + 3) % 6].name[0]
+                terrains[ori] = tile.terrains[(ori - tile.ori + 3) % 6]
 
-        return Tile("".join(terrains))
+        return terrains2tile(tuple(terrains))
 
     def perfect_alternates(self, pos):
         count = 0
         pre_ruined = len(set(self.ruined))
-        for tile, subcount in self.counter.items():
+        for terrains, subcount in self.counter.items():
             for ori in range(6):
                 try:
-                    tile.ori = ori
-                    self[pos] = tile
+                    self[pos] = Tile(terrains, ori)
                     post_ruined = len(set(self.ruined))
                     del self[pos]
                     newly_ruined = post_ruined - pre_ruined
@@ -135,7 +130,7 @@ class TileMap(MutableMapping):
 
         return count
 
-    def rate_placement(self, tile, pos):
+    def score(self, pos, tile):
         pre_ruined = len(set(self.ruined))
 
         self[pos] = tile
@@ -156,20 +151,14 @@ class TileMap(MutableMapping):
 
         alternates = self.perfect_alternates(pos)
 
-        return newly_ruined, alternates, secondorder_alternates
+        return newly_ruined, alternates, -secondorder_alternates
 
-    def suggest_placements(self, string):
-        placements = defaultdict(set)
+    def scores(self, terrains):
         for pos in self.open:
             for ori in range(6):
                 try:
-                    tile = Tile(string)
-                    tile.ori = ori
-                    score = self.rate_placement(tile, pos)
-                    placements[score].add((pos, tile))
+                    tile = Tile(terrains, ori)
+                    score = self.score(pos, tile)
+                    yield score, pos, tile
                 except InvalidTilePlacementError:
                     pass
-
-        sorted_placements = [placements[key] for key in sorted(placements)]
-
-        return sorted_placements
