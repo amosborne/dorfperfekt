@@ -13,6 +13,11 @@ class InvalidTilePlacementError(ValueError):
 
 OFFSETS = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
 
+# FUTURE IDEAS:
+#   1. self.ruined = set()
+#   2. self.open = {pos: sides_occupied}, solve in reverse order of sorted values
+#   3. self.solve(terrains, thresh1=1, thresh2=1)
+
 
 @lru_cache(maxsize=64)
 def adjacent_positions(pos):
@@ -155,7 +160,7 @@ class TileMap(MutableMapping):
         return newly_ruined, alternates, -secondorder_alternates
 
     def scores(self, terrains):
-        for pos in self.open:
+        for pos in list(self.open):
             scores = set()
             for ori in range(6):
                 try:
