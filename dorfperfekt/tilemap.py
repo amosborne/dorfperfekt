@@ -1,6 +1,7 @@
 import re
 from collections import Counter, OrderedDict
 from collections.abc import MutableMapping
+from multiprocessing import Pool
 
 from cachetools.func import lru_cache
 
@@ -15,7 +16,6 @@ OFFSETS = [(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)]
 
 # FUTURE IDEAS:
 #   1. self.ruined = set()
-#   2. self.open = {pos: sides_occupied}, solve in reverse order of sorted values
 #   3. self.solve(terrains, thresh1=1, thresh2=1)
 
 
@@ -136,7 +136,7 @@ class TileMap(MutableMapping):
 
         return count
 
-    def score(self, pos, tile):
+    def score_tile(self, pos, tile):
         pre_ruined = len(set(self.ruined))
 
         self[pos] = tile
@@ -159,15 +159,21 @@ class TileMap(MutableMapping):
 
         return newly_ruined, alternates, -secondorder_alternates
 
-    def scores(self, terrains):
-        for pos in list(self.open):
-            scores = set()
-            for ori in range(6):
-                try:
-                    tile = Tile(terrains, ori)
-                    score = self.score(pos, tile)
-                    scores.add((score, tile))
-                except InvalidTilePlacementError:
-                    pass
+    def score_pos(self, args):
+        pos, terrains = args
+        scores = set()
+        for ori in range(6):
+            try:
+                tile = Tile(terrains, ori)
+                score = self.score_tile(pos, tile)
+                scores.add((score, tile))
+            except InvalidTilePlacementError:
+                pass
 
-            yield pos, scores
+        return pos, scores
+
+    def scores(self, terrains):
+        args = ((pos, terrains) for pos in self.open)
+        with Pool() as pool:
+            for score in pool.imap_unordered(self.score_pos, args):
+                yield score

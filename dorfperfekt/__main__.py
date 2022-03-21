@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PySide6.QtCore import QSize, QThread, Signal
+from PySide6.QtCore import QObject, QSize, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -50,27 +50,29 @@ def refresh_canvas(fig, ax, canvas, origin, scale):
     canvas.flush_events()
 
 
-class Solver(QThread):
-    signal = Signal(tuple)
+class Solver(QObject):
+    result = Signal(tuple)
 
-    def __init__(self, tilemap, terrains):
-        super(Solver, self).__init__()
-        self.tilemap = tilemap
-        self.terrains = terrains
+    def __init__(self, parent=None, **kwargs):
+        super(Solver, self).__init__(parent, **kwargs)
 
     def interrupt(self):
         self.active = False
 
-    def run(self):
+    @Slot(tuple)
+    def run(self, msg):
         self.active = True
-        scores = self.tilemap.scores(self.terrains)
+        tilemap, terrains = msg
+        scores = tilemap.scores(terrains)
         for i, (pos, tilescores) in enumerate(scores):
-            self.signal.emit((i, pos, tilescores))
+            self.result.emit((i, pos, tilescores))
             if not self.active:
                 break
 
 
 class MainWindow(QMainWindow):
+    run_solver = Signal(tuple)
+
     def __init__(self):
         QMainWindow.__init__(self)
         self.setWindowTitle("Dorfperfekt[*]")
@@ -93,7 +95,13 @@ class MainWindow(QMainWindow):
 
         self.filename = None
         self.tilemap = TileMap()
-        self.solver = None
+
+        self.thread = QThread()
+        self.solver = Solver()
+        self.solver.result.connect(self.update)
+        self.run_solver.connect(self.solver.run)
+        self.solver.moveToThread(self.thread)
+        self.thread.start(priority=QThread.Priority.IdlePriority)
 
         self.pos_scale = 2500
         self.pos_focus = (0, 0)
@@ -176,18 +184,19 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
 
-        if self.solver is not None:
-            self.solver.interrupt()
-            self.solver.wait()
-
+        self.solver.interrupt()
+        self.thread.quit()
+        self.thread.wait()
         event.accept()
 
-    def resizeEvent(self, event):
-        self.draw_position_map()
-        self.draw_terrain_map()
-        event.accept()
+    # def resizeEvent(self, event):
+    # #     self.draw_position_map()
+    # #     self.draw_terrain_map()
+    #     print("resizing")
+    #     event.accept()
 
     def refresh(self, modified=False):
+        self.scores = dict()
         self.draw_position_map()
         self.draw_terrain_map()
         self.setWindowModified(modified)
@@ -198,7 +207,10 @@ class MainWindow(QMainWindow):
         ruined = set(self.tilemap.ruined)
         nonruined = set(self.tilemap) - ruined
 
-        draw_position_map(self.posax, nonruined, ruined)
+        ranked = {pos: score for pos, score in self.scores.items() if score is not None}
+        ranked = [pos for pos in sorted(ranked, key=ranked.get)]
+
+        draw_position_map(self.posax, nonruined, ruined, ranked)
 
         refresh_canvas(
             fig=self.posfg,
@@ -209,12 +221,13 @@ class MainWindow(QMainWindow):
         )
 
     def draw_terrain_map(self):
+        tiles = list(self.tilemap.items())
         if self.ter_focus in self.tilemap:
             selected = (self.ter_focus, self.tilemap[self.ter_focus])
         else:
             selected = None
 
-        draw_terrain_map(self.terax, self.tilemap.items(), selected)
+        draw_terrain_map(self.terax, tiles, selected)
 
         refresh_canvas(
             fig=self.terfg,
@@ -275,18 +288,19 @@ class MainWindow(QMainWindow):
             return
 
         self.pgbar.setMaximum(len(self.tilemap.open))
-
-        if self.solver is not None:
-            self.solver.interrupt()
-            self.solver.wait()
-
-        self.solver = Solver(deepcopy(self.tilemap), tile.terrains)
-        self.solver.signal.connect(self.update)
-        self.solver.start()
+        self.scores = {pos: None for pos in self.tilemap.open}
+        self.solver.interrupt()
+        self.run_solver.emit((self.tilemap, tile.terrains))
 
     def update(self, msg):
         i, pos, tilescores = msg
+        if tilescores:
+            self.scores[pos] = min(score for score, _ in tilescores)
+        else:
+            del self.scores[pos]
+
         self.pgbar.setValue(i + 1)
+        # self.draw_position_map()
 
     def place(self):
         if self.move is not None:

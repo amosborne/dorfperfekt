@@ -72,18 +72,15 @@ def tile2string(tile):
     return string[-tile.ori :] + string[: -tile.ori]
 
 
-class SettifyCacheArguments:
+class SettifyArguments:
     def __init__(self, func):
         self.func = func
 
     def __call__(self, arg1, arg2):
         return self.func(frozenset((arg1, arg2)))
 
-    def cache_info(self):
-        return self.func.cache_info()
 
-
-@SettifyCacheArguments
+@SettifyArguments
 @lfu_cache(maxsize=64)
 def validate_terrains(terrains):
     if Terrain.OPEN in terrains:
@@ -100,8 +97,7 @@ def validate_terrains(terrains):
     return not is_invalid, is_perfect
 
 
-@SettifyCacheArguments
-@lfu_cache(maxsize=262144)
+@SettifyArguments
 def validate_tiles(tiles):
     if len(tiles) == 1:
         return True, (True,) * 6
