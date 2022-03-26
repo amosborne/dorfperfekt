@@ -4,18 +4,20 @@ from copy import deepcopy
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PySide6.QtCore import QObject, QSize, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QSize, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -42,10 +44,10 @@ StyleSheet = """
 def refresh_canvas(fig, ax, canvas, origin, scale):
     extent = fig.get_window_extent()
     coords = pos2coords(origin)
-    w = extent.width * fig.dpi / scale
-    h = extent.height * fig.dpi / scale
-    ax.set_xlim(-w + coords[0], w + coords[0])
-    ax.set_ylim(-h + coords[1], h + coords[1])
+    scale = scale * 3 / 4
+    ascale = scale * extent.height / extent.width
+    ax.set_xlim(coords[0] - scale, coords[0] + scale)
+    ax.set_ylim(coords[1] - ascale, coords[1] + ascale)
     canvas.draw()
     canvas.flush_events()
 
@@ -75,27 +77,36 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         QMainWindow.__init__(self)
-        self.setWindowTitle("Dorfperfekt[*]")
-        self.setMinimumSize(QSize(600, 600))
-
-        self.init_menu_bar()
-
-        vbox = QVBoxLayout()
-
-        self.posfg, self.posax, self.poscv = self.init_plot_canvas(vbox)
-        self.terfg, self.terax, self.tercv = self.init_plot_canvas(vbox)
-        self.ledit = self.init_control_grid(vbox)
-        self.pgbar = self.init_progress_bar(vbox)
-
-        self.poscv.callbacks.connect("button_press_event", self.focus)
-
-        central = QWidget(self)
-        central.setLayout(vbox)
-        self.setCentralWidget(central)
+        self.setMinimumSize(500, 500)
 
         self.filename = None
         self.tilemap = TileMap()
+        self.pos_focus = (0, 0)
+        self.ter_focus = (0, 0)
 
+        self.init_menu_bar()
+        self.init_window_title()
+
+        # setup top-level layouts
+        main_vbox = QVBoxLayout()
+        main_hbox = QHBoxLayout()
+        side_vbox = QVBoxLayout()
+        main_vbox.addLayout(main_hbox)
+        main_hbox.addLayout(side_vbox)
+
+        central = QWidget(self)
+        central.setLayout(main_vbox)
+        self.setCentralWidget(central)
+
+        # setup top-level widgets
+        self.possc, self.tersc, self.ledit = self.init_control_grid(side_vbox)
+        self.terfg, self.terax, self.tercv = self.init_plot_canvas(side_vbox)
+        self.tercv.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        self.posfg, self.posax, self.poscv = self.init_plot_canvas(main_hbox)
+        self.poscv.callbacks.connect("button_press_event", self.focus)
+        self.pgbar = self.init_progress_bar(main_vbox)
+
+        # setup solver thread
         self.thread = QThread()
         self.solver = Solver()
         self.solver.result.connect(self.update)
@@ -103,13 +114,14 @@ class MainWindow(QMainWindow):
         self.solver.moveToThread(self.thread)
         self.thread.start(priority=QThread.Priority.IdlePriority)
 
-        self.pos_scale = 2500
-        self.pos_focus = (0, 0)
+        # setup resize event timer
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.resized)
 
-        self.ter_scale = 10000
-        self.ter_focus = (0, 0)
-
-        self.refresh()
+    def init_window_title(self):
+        filestring = " (" + self.filename + ")" if self.filename is not None else ""
+        self.setWindowTitle("Dorfperfekt" + filestring + "[*]")
 
     def init_menu_bar(self):
         menu = self.menuBar()
@@ -129,43 +141,42 @@ class MainWindow(QMainWindow):
         fig = Figure()
         ax = fig.add_axes([0, 0, 1, 1])
         canvas = FigureCanvas(fig)
-        parent.addWidget(canvas)
+        parent.addWidget(canvas, stretch=1)
 
         return fig, ax, canvas
 
     def init_control_grid(self, parent):
-        hbox = QHBoxLayout()
         grid = QGridLayout()
 
-        tile_string = QLineEdit()
-        tile_string.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        grid.addWidget(tile_string, 0, 0)
+        grid.addWidget(QLabel("Position Map Horizontal Scale :"), 0, 0, 1, 2)
+        grid.addWidget(possc := QSpinBox(minimum=10), 0, 2)
+        grid.addWidget(QLabel("Terrain Map Horizontal Scale :"), 1, 0, 1, 2)
+        grid.addWidget(tersc := QSpinBox(minimum=5), 1, 2)
 
-        solve_button = QPushButton("SOLVE")
-        solve_button.clicked.connect(self.solve)
-        grid.addWidget(solve_button, 1, 0)
+        grid.addWidget(set_origin := QPushButton("Set Origin"), 2, 0)
+        grid.addWidget(rst_origin := QPushButton("Reset Origin"), 2, 1)
+        grid.addWidget(refresh := QPushButton("Refresh"), 2, 2)
 
-        rotate_cw_button = QPushButton("ROTATE CW")
-        rotate_cw_button.clicked.connect(lambda: self.rotate(1))
-        grid.addWidget(rotate_cw_button, 0, 1)
+        grid.addWidget(QLabel("Tile Definition String :"), 3, 0, 1, 2)
+        grid.addWidget(ledit := QLineEdit(), 3, 2)
+        ledit.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        grid.addWidget(QLabel("Tile Counter Threshold :"), 4, 0, 1, 2)
+        grid.addWidget(thresh := QSpinBox(minimum=1), 4, 2)
 
-        rotate_ccw_button = QPushButton("ROTATE CCW")
-        rotate_ccw_button.clicked.connect(lambda: self.rotate(-1))
-        grid.addWidget(rotate_ccw_button, 1, 1)
+        grid.addWidget(solve := QPushButton("Solve"), 5, 0, 1, 3)
+        grid.addWidget(delete := QPushButton("Delete"), 6, 0)
+        grid.addWidget(rotate := QPushButton("Rotate"), 6, 1)
+        grid.addWidget(place := QPushButton("Place"), 6, 2)
 
-        place_button = QPushButton("PLACE")
-        place_button.clicked.connect(self.place)
-        grid.addWidget(place_button, 0, 2)
+        possc.valueChanged.connect(self.draw_position_map)
+        tersc.valueChanged.connect(self.draw_terrain_map)
+        refresh.clicked.connect(self.draw_position_map)
+        set_origin.clicked.connect(lambda: self.change_origin(self.ter_focus))
+        rst_origin.clicked.connect(lambda: self.change_origin((0, 0)))
 
-        delete_button = QPushButton("DELETE")
-        delete_button.clicked.connect(self.delete)
-        grid.addWidget(delete_button, 1, 2)
+        parent.addLayout(grid)
 
-        hbox.addLayout(grid)
-        hbox.addStretch()
-        parent.addLayout(hbox)
-
-        return tile_string
+        return possc, tersc, ledit
 
     def init_progress_bar(self, parent):
         pgbar = QProgressBar(self, objectName="BlueProgressBar")
@@ -189,19 +200,25 @@ class MainWindow(QMainWindow):
         self.thread.wait()
         event.accept()
 
-    # def resizeEvent(self, event):
-    # #     self.draw_position_map()
-    # #     self.draw_terrain_map()
-    #     print("resizing")
-    #     event.accept()
+    def resizeEvent(self, event):
+        self.timer.start(500)
+        event.accept()
 
-    def refresh(self, modified=False):
-        self.scores = dict()
+    def resized(self):
         self.draw_position_map()
         self.draw_terrain_map()
+
+    def reset(self, modified=False):
+        self.scores = dict()
+        self.resized()
         self.setWindowModified(modified)
         self.ledit.setText("")
         self.pgbar.setValue(0)
+
+    def change_origin(self, origin):
+        self.pos_focus = origin
+        self.ter_focus = origin
+        self.resized()
 
     def draw_position_map(self):
         ruined = set(self.tilemap.ruined)
@@ -217,7 +234,7 @@ class MainWindow(QMainWindow):
             ax=self.posax,
             canvas=self.poscv,
             origin=self.pos_focus,
-            scale=self.pos_scale,
+            scale=self.possc.value(),
         )
 
     def draw_terrain_map(self):
@@ -234,7 +251,7 @@ class MainWindow(QMainWindow):
             ax=self.terax,
             canvas=self.tercv,
             origin=self.ter_focus,
-            scale=self.ter_scale,
+            scale=self.tersc.value(),
         )
 
     def focus(self, event):
@@ -262,7 +279,8 @@ class MainWindow(QMainWindow):
         if filename:
             self.tilemap = TileMap.from_file(filename)
             self.filename = filename
-            self.refresh()
+            self.init_window_title()
+            self.reset()
 
     def save(self):
         if not self.isWindowModified():
@@ -278,6 +296,7 @@ class MainWindow(QMainWindow):
         if filename:
             self.tilemap.write_file(filename)
             self.filename = filename
+            self.init_window_title()
             self.setWindowModified(False)
 
     def solve(self):
@@ -326,6 +345,7 @@ def main():
     app.setStyleSheet(StyleSheet)
     main_window = MainWindow()
     main_window.show()
+    main_window.reset()
     sys.exit(app.exec())
 
 
