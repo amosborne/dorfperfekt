@@ -98,7 +98,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         # setup top-level widgets
-        self.possc, self.tersc, self.ledit, self.thresh = self.init_controls(side_vbox)
+        self.init_controls(side_vbox)
         self.terfg, self.terax, self.tercv = self.init_plot_canvas(side_vbox)
         self.tercv.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.posfg, self.posax, self.poscv = self.init_plot_canvas(main_hbox)
@@ -172,6 +172,9 @@ class MainWindow(QMainWindow):
         grid.addWidget(rotate := QPushButton("Rotate"), 6, 1)
         grid.addWidget(place := QPushButton("Place"), 6, 2)
 
+        grid.addWidget(total := QLabel(), 7, 0, 1, 3)
+        grid.addWidget(cover := QLabel(), 8, 0, 1, 3)
+
         possc.valueChanged.connect(self.draw_position_map)
         tersc.valueChanged.connect(self.draw_terrain_map)
         refresh.clicked.connect(self.draw_position_map)
@@ -185,7 +188,12 @@ class MainWindow(QMainWindow):
 
         parent.addLayout(grid)
 
-        return possc, tersc, ledit, thresh
+        self.possc = possc
+        self.tersc = tersc
+        self.ledit = ledit
+        self.thresh = thresh
+        self.total = total
+        self.cover = cover
 
     def init_progress_bar(self, parent):
         pgbar = QProgressBar(self, objectName="BlueProgressBar")
@@ -227,6 +235,17 @@ class MainWindow(QMainWindow):
         self.setWindowModified(modified)
         self.ledit.setText("")
         self.pgbar.setValue(0)
+
+        fstring = "{placed:d} placed. {ruined:d} ruined. {unique:d} unique."
+        self.total.setText(
+            fstring.format(
+                placed=len(self.tilemap),
+                ruined=len(self.tilemap.ruined),
+                unique=len(self.tilemap.counter),
+            )
+        )
+
+        self.cover.setText("")
 
     def change_origin(self, origin):
         self.pos_focus = origin
@@ -349,6 +368,15 @@ class MainWindow(QMainWindow):
             self.tile2solve = string2tile(string)
         except InvalidTileDefinitionError:
             return
+
+        cov = len(
+            [
+                tile
+                for tile, count in self.tilemap.counter.items()
+                if count >= self.thresh.value()
+            ]
+        )
+        self.cover.setText("Solver considering {:d} unique tiles.".format(cov))
 
         self.pgbar.setMaximum(len(self.tilemap.open))
         self.scores = {pos: None for pos in self.tilemap.open}
