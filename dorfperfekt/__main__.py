@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from .display import coords2pos, draw_position_map, draw_terrain_map, pos2coords
 from .tile import InvalidTileDefinitionError, string2tile
-from .tilemap import TileMap
+from .tilemap import InvalidTilePlacementError, TileMap
 
 StyleSheet = """
 #BlueProgressBar {
@@ -180,6 +180,9 @@ class MainWindow(QMainWindow):
         rst_origin.clicked.connect(lambda: self.change_origin((0, 0)))
 
         solve.clicked.connect(self.solve)
+        place.clicked.connect(self.place)
+        rotate.clicked.connect(self.rotate)
+        delete.clicked.connect(self.delete)
 
         parent.addLayout(grid)
 
@@ -217,6 +220,8 @@ class MainWindow(QMainWindow):
 
     def reset(self, modified=False):
         self.scores = dict()
+        self.tile2solve = None
+        self.tile2place = None
         self.resized()
         self.setWindowModified(modified)
         self.ledit.setText("")
@@ -225,6 +230,7 @@ class MainWindow(QMainWindow):
     def change_origin(self, origin):
         self.pos_focus = origin
         self.ter_focus = origin
+        self.tile2place = None
         self.resized()
 
     def draw_position_map(self):
@@ -254,8 +260,9 @@ class MainWindow(QMainWindow):
 
     def draw_terrain_map(self):
         tiles = list(self.tilemap.items())
-        if self.ter_focus in self.tilemap:
-            selected = (self.ter_focus, self.tilemap[self.ter_focus])
+        if self.tile2place is not None:
+            selected = (self.ter_focus, self.tile2place)
+            tiles.append(selected)
         else:
             selected = None
 
@@ -272,12 +279,29 @@ class MainWindow(QMainWindow):
     def focus(self, event):
         if event.inaxes is not None:
             self.ter_focus = coords2pos((event.xdata, event.ydata))
-            self.draw_terrain_map()
 
-    def delete(self):
-        if self.ter_focus in self.tilemap:
-            del self.tilemap[self.ter_focus]
-            self.refresh(modified=True)
+            if self.ter_focus in self.tilemap:
+                # focus position is an existing tile
+                self.tile2place = self.tilemap[self.ter_focus]
+
+            elif self.ter_focus in self.scores:
+                # focus position is an open position
+                tilescores = self.scores[self.ter_focus]
+
+                if tilescores is None:
+                    # focus position has not been scored, use default
+                    self.tile2place = self.tile2solve
+                else:
+                    # focus position has been scored, get best score
+                    scores, tiles = zip(*tilescores)
+                    idx = scores.index(min(scores))
+                    self.tile2place = tiles[idx]
+
+            else:
+                # focus position is not a valid tile
+                self.tile2place = None
+
+            self.draw_terrain_map()
 
     def open(self):
         if self.isWindowModified():
@@ -317,14 +341,16 @@ class MainWindow(QMainWindow):
     def solve(self):
         try:
             string = self.ledit.text()
-            tile = string2tile(string)
+            self.tile2solve = string2tile(string)
         except InvalidTileDefinitionError:
             return
 
         self.pgbar.setMaximum(len(self.tilemap.open))
         self.scores = {pos: None for pos in self.tilemap.open}
         self.solver.interrupt()
-        self.run_solver.emit((self.tilemap, tile.terrains, self.thresh.value()))
+        self.run_solver.emit(
+            (self.tilemap, self.tile2solve.terrains, self.thresh.value())
+        )
         self.progress = 0
         self.ptimer.start(2000)
 
@@ -343,22 +369,22 @@ class MainWindow(QMainWindow):
             self.ptimer.stop()
 
     def place(self):
-        if self.move is not None:
-            self.tilemap[self.move[0]] = self.move[1]
-            self.refresh(modified=True)
+        if self.tile2place is not None and self.ter_focus not in self.tilemap:
+            try:
+                self.tilemap[self.ter_focus] = self.tile2place
+                self.reset(modified=True)
+            except InvalidTilePlacementError:
+                pass
 
-    def rotate(self, direc):
-        if self.move is not None:
-            moves = set().union(*self.movelist)
-            moves = {move for move in moves if move == self.move}
-            ori = self.move[1].ori
-            while True:
-                ori += direc % 6
-                for move in moves:
-                    if move[1].ori == ori:
-                        self.move = move
-                        self.draw_terrain_map(focus=self.move)
-                        return
+    def rotate(self):
+        if self.tile2place is not None and self.ter_focus not in self.tilemap:
+            self.tile2place = self.tile2place._replace(ori=self.tile2place.ori + 1)
+            self.draw_terrain_map()
+
+    def delete(self):
+        if self.tile2place is not None and self.ter_focus in self.tilemap:
+            del self.tilemap[self.ter_focus]
+            self.reset(modified=True)
 
 
 def main():
