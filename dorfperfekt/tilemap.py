@@ -1,7 +1,8 @@
 import re
 from collections import Counter, OrderedDict
 from collections.abc import MutableMapping
-from multiprocessing import Pool
+from math import inf
+from multiprocessing import Pool, cpu_count
 
 from cachetools.func import lru_cache
 
@@ -144,12 +145,11 @@ class TileMap(MutableMapping):
 
         self[pos] = tile
 
-        secondorder_alternates = sum(
-            [
-                self.perfect_alternates(adj, thresh)
-                for adj in adjacent_positions(pos)
-                if adj in self.open
-            ]
+        open_adj = [adj for adj in adjacent_positions(pos) if adj in self.open]
+        secondorder_alternates = (
+            min([self.perfect_alternates(adj, thresh) for adj in open_adj])
+            if open_adj
+            else inf
         )
 
         post_ruined = len(set(self.ruined))
@@ -177,6 +177,6 @@ class TileMap(MutableMapping):
 
     def scores(self, terrains, thresh=1):
         args = ((pos, terrains, thresh) for pos in self.open)
-        with Pool() as pool:
+        with Pool(cpu_count() // 2) as pool:
             for score in pool.imap_unordered(self.score_pos, args):
                 yield score

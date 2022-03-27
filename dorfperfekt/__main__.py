@@ -42,15 +42,13 @@ StyleSheet = """
 """
 
 
-def refresh_canvas(fig, ax, canvas, origin, scale):
+def rescale_axes(fig, ax, origin, scale):
     extent = fig.get_window_extent()
     coords = pos2coords(origin)
     scale = scale * 3 / 4
     ascale = scale * extent.height / extent.width
     ax.set_xlim(coords[0] - scale, coords[0] + scale)
     ax.set_ylim(coords[1] - ascale, coords[1] + ascale)
-    canvas.draw()
-    canvas.flush_events()
 
 
 class Solver(QObject):
@@ -145,6 +143,7 @@ class MainWindow(QMainWindow):
     def init_plot_canvas(self, parent):
         fig = Figure()
         ax = fig.add_axes([0, 0, 1, 1])
+        ax.axis("off")
         canvas = FigureCanvas(fig)
         parent.addWidget(canvas, stretch=1)
 
@@ -219,6 +218,8 @@ class MainWindow(QMainWindow):
         self.draw_terrain_map()
 
     def reset(self, modified=False):
+        self.solver.interrupt()
+        self.ptimer.stop()
         self.scores = dict()
         self.tile2solve = None
         self.tile2place = None
@@ -248,15 +249,17 @@ class MainWindow(QMainWindow):
 
         ranked = [ranked[score] for score in sorted(ranked)]
 
-        draw_position_map(self.posax, nonruined, ruined, ranked, unranked)
-
-        refresh_canvas(
+        rescale_axes(
             fig=self.posfg,
             ax=self.posax,
-            canvas=self.poscv,
             origin=self.pos_focus,
             scale=self.possc.value(),
         )
+
+        draw_position_map(self.posax, nonruined, ruined, ranked, unranked)
+
+        self.poscv.draw()
+        self.poscv.flush_events()
 
     def draw_terrain_map(self):
         tiles = list(self.tilemap.items())
@@ -266,15 +269,17 @@ class MainWindow(QMainWindow):
         else:
             selected = None
 
-        draw_terrain_map(self.terax, tiles, selected)
-
-        refresh_canvas(
+        rescale_axes(
             fig=self.terfg,
             ax=self.terax,
-            canvas=self.tercv,
             origin=self.ter_focus,
             scale=self.tersc.value(),
         )
+
+        draw_terrain_map(self.terax, tiles, selected)
+
+        self.tercv.draw()
+        self.tercv.flush_events()
 
     def focus(self, event):
         if event.inaxes is not None:
@@ -378,7 +383,8 @@ class MainWindow(QMainWindow):
 
     def rotate(self):
         if self.tile2place is not None and self.ter_focus not in self.tilemap:
-            self.tile2place = self.tile2place._replace(ori=self.tile2place.ori + 1)
+            newori = (self.tile2place.ori + 1) % 6
+            self.tile2place = self.tile2place._replace(ori=newori)
             self.draw_terrain_map()
 
     def delete(self):

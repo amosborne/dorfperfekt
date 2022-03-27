@@ -39,8 +39,7 @@ def coords2pos(coords):
 def format_map(draw_map):
     def wrapper(*args, **kwargs):
         ax = kwargs["ax"] if "ax" in kwargs else args[0]
-        ax.clear()
-        ax.axis("off")
+        [p.remove() for p in reversed(ax.patches)]
         draw_map(*args, **kwargs)
 
     return wrapper
@@ -48,11 +47,17 @@ def format_map(draw_map):
 
 @format_map
 def draw_position_map(ax, nonruined, ruined, ranked=[], unranked=[]):
+    xlim, ylim = ax.get_xlim(), ax.get_ylim()
+
     def draw_tile(pos, color, edge):
         coords = pos2coords(pos)
-        corners = coords + VERTICES
-        patch = Polygon(corners, edgecolor=edge, facecolor=color)
-        ax.add_patch(patch)
+        inx = (xlim[0] - 1) <= coords[0] <= (xlim[1] + 1)
+        iny = (ylim[0] - 1) <= coords[1] <= (ylim[1] + 1)
+
+        if inx and iny:
+            corners = coords + VERTICES
+            patch = Polygon(corners, edgecolor=edge, facecolor=color)
+            ax.add_patch(patch)
 
     color = CMAP(np.linspace(0, 1, len(ranked)))
 
@@ -68,19 +73,21 @@ def draw_position_map(ax, nonruined, ruined, ranked=[], unranked=[]):
 
 @format_map
 def draw_terrain_map(ax, tiles, selected):
+    xlim, ylim = ax.get_xlim(), ax.get_ylim()
+
     for pos, tile in tiles:
-        color = "black" if (pos, tile) == selected else None
-
         coords = pos2coords(pos)
-        corners = coords + VERTICES
-        corners = np.vstack((corners, corners[0]))
-        corners = np.flipud(corners)
+        inx = (xlim[0] - 1) <= coords[0] <= (xlim[1] + 1)
+        iny = (ylim[0] - 1) <= coords[1] <= (ylim[1] + 1)
 
-        for k in range(len(corners) - 1):
-            subpatch_corners = [coords, corners[k], corners[k + 1]]
-            subpatch = Polygon(
-                subpatch_corners,
-                edgecolor=color,
-                facecolor=TERRAIN_COLORS[tile.terrains[(k + 2 - tile.ori) % 6]],
-            )
-            ax.add_patch(subpatch)
+        if inx and iny:
+            corners = coords + VERTICES
+            corners = np.vstack((corners, corners[0]))
+            corners = np.flipud(corners)
+            color = "black" if (pos, tile) == selected else None
+
+            for k in range(len(corners) - 1):
+                tcolor = TERRAIN_COLORS[tile.terrains[(k + 2 - tile.ori) % 6]]
+                subpatch_corners = [coords, corners[k], corners[k + 1]]
+                subpatch = Polygon(subpatch_corners, edgecolor=color, facecolor=tcolor)
+                ax.add_patch(subpatch)

@@ -101,10 +101,10 @@ def test_restricted():
 def test_score():
     tilemap = TileMap()
     score = tilemap.score_tile(pos=(1, 0), tile=string2tile("r"))
-    assert score == (2, 1, -3)
+    assert score == (2, 1, 0)
 
     score = tilemap.score_tile(pos=(1, 0), tile=string2tile("wggggg"))
-    assert score == (0, 1, -9)
+    assert score == (0, 1, -1)
 
     with pytest.raises(InvalidTilePlacementError):
         tilemap.score_tile(pos=(1, 0), tile=string2tile("t"))
