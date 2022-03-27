@@ -58,7 +58,11 @@ def draw_position_map(ax, nonruined, ruined, ranked=[], unranked=[]):
 
     [draw_tile(pos, "lightslategrey", "white") for pos in nonruined]
     [draw_tile(pos, "lightsteelblue", "white") for pos in ruined]
-    [draw_tile(pos, color[idx], "black") for idx, pos in enumerate(ranked)]
+
+    for idx, pset in enumerate(ranked):
+        for pos in pset:
+            draw_tile(pos, color[idx], "black")
+
     [draw_tile(pos, "white", "black") for pos in unranked]
 
 

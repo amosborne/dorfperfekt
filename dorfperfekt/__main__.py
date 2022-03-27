@@ -1,5 +1,6 @@
 import sys
 import time
+from collections import defaultdict
 from copy import deepcopy
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -64,8 +65,8 @@ class Solver(QObject):
     @Slot(tuple)
     def run(self, msg):
         self.active = True
-        tilemap, terrains = msg
-        scores = tilemap.scores(terrains)
+        tilemap, terrains, thresh = msg
+        scores = tilemap.scores(terrains, thresh)
         for i, (pos, tilescores) in enumerate(scores):
             self.result.emit((i, pos, tilescores))
             if not self.active:
@@ -99,7 +100,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         # setup top-level widgets
-        self.possc, self.tersc, self.ledit = self.init_control_grid(side_vbox)
+        self.possc, self.tersc, self.ledit, self.thresh = self.init_controls(side_vbox)
         self.terfg, self.terax, self.tercv = self.init_plot_canvas(side_vbox)
         self.tercv.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.posfg, self.posax, self.poscv = self.init_plot_canvas(main_hbox)
@@ -109,15 +110,19 @@ class MainWindow(QMainWindow):
         # setup solver thread
         self.thread = QThread()
         self.solver = Solver()
-        self.solver.result.connect(self.update)
+        self.solver.result.connect(self.update_scores)
         self.run_solver.connect(self.solver.run)
         self.solver.moveToThread(self.thread)
         self.thread.start(priority=QThread.Priority.IdlePriority)
 
         # setup resize event timer
-        self.timer = QTimer()
-        self.timer.setSingleShot(True)
-        self.timer.timeout.connect(self.resized)
+        self.rtimer = QTimer()
+        self.rtimer.setSingleShot(True)
+        self.rtimer.timeout.connect(self.resized)
+
+        # setup progress timer
+        self.ptimer = QTimer()
+        self.ptimer.timeout.connect(self.update_progress)
 
     def init_window_title(self):
         filestring = " (" + self.filename + ")" if self.filename is not None else ""
@@ -145,7 +150,7 @@ class MainWindow(QMainWindow):
 
         return fig, ax, canvas
 
-    def init_control_grid(self, parent):
+    def init_controls(self, parent):
         grid = QGridLayout()
 
         grid.addWidget(QLabel("Position Map Horizontal Scale :"), 0, 0, 1, 2)
@@ -174,9 +179,11 @@ class MainWindow(QMainWindow):
         set_origin.clicked.connect(lambda: self.change_origin(self.ter_focus))
         rst_origin.clicked.connect(lambda: self.change_origin((0, 0)))
 
+        solve.clicked.connect(self.solve)
+
         parent.addLayout(grid)
 
-        return possc, tersc, ledit
+        return possc, tersc, ledit, thresh
 
     def init_progress_bar(self, parent):
         pgbar = QProgressBar(self, objectName="BlueProgressBar")
@@ -201,7 +208,7 @@ class MainWindow(QMainWindow):
         event.accept()
 
     def resizeEvent(self, event):
-        self.timer.start(500)
+        self.rtimer.start(500)
         event.accept()
 
     def resized(self):
@@ -224,10 +231,18 @@ class MainWindow(QMainWindow):
         ruined = set(self.tilemap.ruined)
         nonruined = set(self.tilemap) - ruined
 
-        ranked = {pos: score for pos, score in self.scores.items() if score is not None}
-        ranked = [pos for pos in sorted(ranked, key=ranked.get)]
+        ranked = defaultdict(set)
+        unranked = set()
+        for pos, tilescores in self.scores.items():
+            if tilescores is None:
+                unranked.add(pos)
+            else:
+                score = min(score for score, _ in tilescores)
+                ranked[score].add(pos)
 
-        draw_position_map(self.posax, nonruined, ruined, ranked)
+        ranked = [ranked[score] for score in sorted(ranked)]
+
+        draw_position_map(self.posax, nonruined, ruined, ranked, unranked)
 
         refresh_canvas(
             fig=self.posfg,
@@ -309,17 +324,23 @@ class MainWindow(QMainWindow):
         self.pgbar.setMaximum(len(self.tilemap.open))
         self.scores = {pos: None for pos in self.tilemap.open}
         self.solver.interrupt()
-        self.run_solver.emit((self.tilemap, tile.terrains))
+        self.run_solver.emit((self.tilemap, tile.terrains, self.thresh.value()))
+        self.progress = 0
+        self.ptimer.start(2000)
 
-    def update(self, msg):
+    def update_scores(self, msg):
         i, pos, tilescores = msg
         if tilescores:
-            self.scores[pos] = min(score for score, _ in tilescores)
+            self.scores[pos] = tilescores
         else:
             del self.scores[pos]
 
-        self.pgbar.setValue(i + 1)
-        # self.draw_position_map()
+        self.progress = i + 1
+
+    def update_progress(self):
+        self.pgbar.setValue(self.progress)
+        if self.progress == self.pgbar.maximum():
+            self.ptimer.stop()
 
     def place(self):
         if self.move is not None:

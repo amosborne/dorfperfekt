@@ -118,10 +118,13 @@ class TileMap(MutableMapping):
 
         return terrains2tile(tuple(terrains))
 
-    def perfect_alternates(self, pos):
+    def perfect_alternates(self, pos, thresh=1):
         count = 0
         pre_ruined = len(set(self.ruined))
         for terrains, subcount in self.counter.items():
+            if subcount < thresh:
+                continue
+
             for ori in range(6):
                 try:
                     self[pos] = Tile(terrains, ori)
@@ -136,14 +139,14 @@ class TileMap(MutableMapping):
 
         return count
 
-    def score_tile(self, pos, tile):
+    def score_tile(self, pos, tile, thresh=1):
         pre_ruined = len(set(self.ruined))
 
         self[pos] = tile
 
         secondorder_alternates = sum(
             [
-                self.perfect_alternates(adj)
+                self.perfect_alternates(adj, thresh)
                 for adj in adjacent_positions(pos)
                 if adj in self.open
             ]
@@ -155,25 +158,25 @@ class TileMap(MutableMapping):
 
         newly_ruined = post_ruined - pre_ruined
 
-        alternates = self.perfect_alternates(pos)
+        alternates = self.perfect_alternates(pos, thresh)
 
         return newly_ruined, alternates, -secondorder_alternates
 
     def score_pos(self, args):
-        pos, terrains = args
+        pos, terrains, thresh = args
         scores = set()
         for ori in range(6):
             try:
                 tile = Tile(terrains, ori)
-                score = self.score_tile(pos, tile)
+                score = self.score_tile(pos, tile, thresh)
                 scores.add((score, tile))
             except InvalidTilePlacementError:
                 pass
 
         return pos, scores
 
-    def scores(self, terrains):
-        args = ((pos, terrains) for pos in self.open)
+    def scores(self, terrains, thresh=1):
+        args = ((pos, terrains, thresh) for pos in self.open)
         with Pool() as pool:
             for score in pool.imap_unordered(self.score_pos, args):
                 yield score
