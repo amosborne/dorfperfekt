@@ -2,9 +2,9 @@
 
 Tile placement suggestions for the game Dorfromantik. With an emphasis on perfect tile placement, this software tool enables the player to play indefinitely (and achieve a massive score while doing so).
 
-![demo dorfperfekt](demo_dorfperfekt.png)
-![demo dorfromantik map](demo_dorfromantik_map.png)
-![demo dorfromantik score](demo_dorfromantik_score.png)
+![demo dorfperfekt](https://github.com/amosborne/dorfperfekt/raw/main/demo_dorfperfekt.png)
+![demo dorfromantik map](https://github.com/amosborne/dorfperfekt/raw/main/demo_dorfromantik_map.png)
+![demo dorfromantik score](https://github.com/amosborne/dorfperfekt/raw/main/demo_dorfromantik_score.png)
 
 ## How It Works
 
@@ -26,7 +26,7 @@ Existing tiles may also be clicked on such that they may be deleted or set as th
 
 ## Tile Definitions
 
-A tile is defined by a six-character text string where each character represents the edge terrains in **clockwise** order. If all edges of the tile are the same a single character may be used instead. Tile characters are deliberatly selected to all be accessible from the left hand.
+A tile is defined by a six-character text string where each character represents the edge terrains in **clockwise** order. If all edges of the tile are the same a single character may be used instead. Tile characters are deliberately selected to all be accessible from the left hand.
 
 - Grass, "g"
 - Forest, "f"
