@@ -39,11 +39,11 @@ A tile is defined by a six-character text string where each character represents
 
 ## Installation
 
-From the command line, install with `pip install dorfperfekt`. The application can then be run from the command line with `dorfperfekt`.
+From the command line (**Run as Administrator**), install with `pip install dorfperfekt`. The application can then be run from the command line with `dorfperfekt`.
 
 ## Development
 
-Setting up the software development environment is easy.
+Setting up the software development environment is easy. From Windows Powershell (**Run as Administrator**):
 
 ```bash
 poetry install
