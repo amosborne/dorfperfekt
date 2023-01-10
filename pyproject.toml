@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dorfperfekt"
-version = "0.2.1"
+version = "0.2.2"
 description = "Tile placement suggestions for the game Dorfromantik."
 authors = ["amosborne <amosborne@users.noreply.github.com>"]
 license = "MIT"
@@ -8,7 +8,7 @@ readme = "README.md"
 repository = "https://github.com/amosborne/dorfperfekt"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.11"
+python = ">=3.9,<3.12"
 matplotlib = "^3.5.1"
 PySide6 = "^6.2.3"
 numpy = "^1.22.2"
