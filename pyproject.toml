@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dorfperfekt"
-version = "0.2.2"
+version = "0.2.3"
 description = "Tile placement suggestions for the game Dorfromantik."
 authors = ["amosborne <amosborne@users.noreply.github.com>"]
 license = "MIT"

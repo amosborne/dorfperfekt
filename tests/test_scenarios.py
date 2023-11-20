@@ -2,8 +2,8 @@ import filecmp
 import os
 from collections import defaultdict
 
-from dorfperfekt.tile import string2tile, validate_terrains, validate_tiles
-from dorfperfekt.tilemap import TileMap, adjacent_positions
+from dorfperfekt.tile import string2tile
+from dorfperfekt.tilemap import TileMap
 
 
 def group_scores(scores):
@@ -48,4 +48,14 @@ def test_demo_game():
 
     tilemap.write_file(fileout)
     assert filecmp.cmp(filein, fileout)
+    os.remove(fileout)
+
+
+def test_broken_game():
+    filein = "tests/scenarios/broken_game.txt"
+    fileout = "tests/test_broken_game.txt"
+    tilemap = TileMap.from_file(filein)
+
+    tilemap.write_file(fileout)
+    assert not filecmp.cmp(filein, fileout)
     os.remove(fileout)

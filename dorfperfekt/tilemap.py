@@ -6,7 +6,14 @@ from multiprocessing import Pool, cpu_count
 
 from cachetools.func import lru_cache
 
-from .tile import Terrain, Tile, string2tile, terrains2tile, tile2string, validate_tiles
+from .tile import (  # local dorfperfekt imports
+    Terrain,
+    Tile,
+    string2tile,
+    terrains2tile,
+    tile2string,
+    validate_tiles,
+)
 
 
 class InvalidTilePlacementError(ValueError):
@@ -38,12 +45,28 @@ class TileMap(MutableMapping):
         tilemap = TileMap()
         del tilemap[0, 0]
         pattern = r"^([GFRDWSTC]{6}) (-?\d+) (-?\d+)$"
+        tiles = []
         with open(filepath) as file:
             for line in file:
                 match = re.match(pattern, line)
                 tile = string2tile(match[1])
                 pos = (int(match[2]), int(match[3]))
-                tilemap[pos] = tile
+                tiles.append((pos, tile))
+
+        while tiles:
+            removables = []
+            for pos, tile in tiles:
+                try:
+                    tilemap[pos] = tile
+                    removables.append((pos, tile))
+                except InvalidTilePlacementError:
+                    pass
+
+            if removables:
+                for pos, tile in removables:
+                    tiles.remove((pos, tile))
+            else:
+                raise InvalidTilePlacementError
 
         return tilemap
 
